@@ -186,14 +186,20 @@
                 const qNum = "A" + Math.floor(100 + Math.random() * 900);
                 set(qRef, { number: qNum, status: 'waiting', timestamp: Date.now(), scanned: false });
                 
+                const baseUrl = window.location.href.split('?')[0]; 
+                const trackingUrl = `${baseUrl}?mode=user&id=${qRef.key}`;
+
+                // ถ้าเข้าผ่านมือถือ (หน้าจอเล็ก) ให้รีไดเรกต์ไปหน้า User อัตโนมัติ
+                if (window.innerWidth <= 768) {
+                    window.location.href = trackingUrl;
+                    return;
+                }
+                
                 document.getElementById('btn-get-q').style.display = 'none';
                 document.getElementById('welcome-text').style.display = 'none';
                 document.getElementById('shortcut-hint').style.display = 'none';
                 document.getElementById('q-number').innerText = qNum;
                 document.getElementById('kiosk-result').classList.remove('hidden');
-                
-                const baseUrl = window.location.href.split('?')[0]; 
-                const trackingUrl = `${baseUrl}?mode=user&id=${qRef.key}`;
                 
                 document.getElementById('qr-code').innerHTML = '';
                 new QRCode(document.getElementById('qr-code'), {
@@ -427,13 +433,12 @@
         };
 
         // ==========================================
-        // 3. STAFF MODE (ปุ่มกดเลือก Counter + คีย์ลัด)
+        // 3. STAFF MODE 
         // ==========================================
         const renderStaff = (container) => {
             let currentCounter = 1;
             let currentQID = null;
             
-            // ฟังก์ชันสำหรับสร้างและอัปเดตปุ่มเลือกช่องบริการ
             const renderCounterButtons = () => {
                 const btnContainer = document.getElementById('counter-buttons');
                 if (!btnContainer) return;
@@ -475,7 +480,6 @@
                             <div>
                                 <p class="text-sm text-slate-500 mb-3 font-semibold"><i class="fa-solid fa-desktop"></i> เลือกช่องบริการ (หรือกดเลข 1-0 บนคีย์บอร์ด):</p>
                                 <div class="flex flex-wrap gap-2" id="counter-buttons">
-                                    <!-- ปุ่ม Counter จะถูกสร้างตรงนี้ -->
                                 </div>
                             </div>
                         </div>
@@ -513,7 +517,6 @@
                 </div>
             `;
             
-            // วาดปุ่ม Counter ทันที
             renderCounterButtons();
 
             const updateUI = (data) => {
@@ -565,9 +568,7 @@
             
             onValue(ref(db, 'queues'), (snap) => updateUI(snap.val()));
 
-            // --- ดักจับคีย์ลัดสำหรับเลือกช่องบริการ ---
             window.addEventListener('keydown', (e) => {
-                // ข้ามถ้าพิมพ์อยู่ใน input อื่น (แม้หน้านี้จะไม่มี แต่ใส่ไว้กันเหนียวครับ)
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
                 const keyMap = {
@@ -604,16 +605,43 @@
                         <h2 class="text-2xl font-bold text-slate-400 mb-6 pb-4 border-b border-slate-700">คิวถัดไป / NEXT</h2>
                         <ul id="tv-waiting-list" class="space-y-4 mb-6 flex-1 overflow-hidden"></ul>
                         
-                        <div class="mt-auto rounded-xl overflow-hidden shadow-lg border border-slate-700 bg-black w-full aspect-video flex-shrink-0">
-                            <video src="video.mp4" autoplay loop muted playsinline class="w-full h-full object-cover"></video>
+                        <div class="mt-auto rounded-xl shadow-lg border border-slate-700 bg-white w-full p-6 flex flex-col items-center justify-center flex-shrink-0">
+                            <h3 class="text-xl font-bold text-slate-800 mb-2"><i class="fa-solid fa-qrcode"></i> สแกนเพื่อรับคิว</h3>
+                            <div id="tv-get-q-qrcode" class="my-4 bg-white p-2 rounded-lg"></div>
+                            <p class="text-sm font-semibold text-blue-600">Scan to get a queue ticket</p>
                         </div>
                     </div>
                 </div>
             `;
+            
             document.getElementById('sound-overlay').onclick = function() {
                 this.remove();
                 playBeep('normal');
             };
+
+            // สร้าง QR Code บนหน้าจอทีวีให้ชี้ไปยังหน้า Kiosk
+            setTimeout(() => {
+                const baseUrl = window.location.href.split('?')[0]; 
+                const scanToGetQueueUrl = `${baseUrl}?mode=kiosk`; 
+                
+                document.getElementById('tv-get-q-qrcode').innerHTML = '';
+                new QRCode(document.getElementById('tv-get-q-qrcode'), {
+                    text: scanToGetQueueUrl,
+                    width: 220,
+                    height: 220,
+                    colorDark : "#0f172a",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.H
+                });
+
+                // จัดกึ่งกลาง QR Code
+                setTimeout(() => {
+                    const qrImg = document.querySelector('#tv-get-q-qrcode img');
+                    const qrCanvas = document.querySelector('#tv-get-q-qrcode canvas');
+                    if(qrImg) qrImg.classList.add('mx-auto');
+                    if(qrCanvas) qrCanvas.classList.add('mx-auto');
+                }, 50);
+            }, 100);
 
             const speak = (text) => {
                 window.speechSynthesis.cancel();
