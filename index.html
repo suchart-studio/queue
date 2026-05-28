@@ -47,7 +47,7 @@
         }
 
         // ==========================================
-        // --- CONFIG ---
+        // --- CONFIG (ใส่ค่าของคุณที่นี่) ---
         // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyDGYuI3yxJbUTc6T_0pm6WiEKZul11tXS0",
@@ -295,7 +295,7 @@
             container.innerHTML = `
                 <div class="min-h-screen bg-gray-50 flex flex-col items-center p-6 transition-colors duration-500" id="user-bg">
                     <button id="btn-enable-sound" class="mb-4 bg-gray-200 text-gray-600 px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 shadow-sm animate-bounce">
-                        <i class="fa-solid fa-volume-xmark"></i> แแตะเพื่อเปิดการแจ้งเตือน
+                        <i class="fa-solid fa-volume-xmark"></i> แตะเพื่อเปิดการแจ้งเตือน
                     </button>
                     <div id="capture-area" class="bg-white w-full max-w-sm rounded-3xl shadow-xl p-8 text-center relative overflow-hidden border border-gray-100">
                         <div class="border-b border-gray-100 pb-4 mb-4">
@@ -621,7 +621,7 @@
         };
 
         // ==========================================
-        // 4. TV DISPLAY MODE (รวมระบบ AI ตรวจหาการชูนิ้วชี้ ☝️)
+        // 4. TV DISPLAY MODE (ระบบ AI ตรวจหาการชูสองนิ้ว ✌️)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
@@ -656,7 +656,7 @@
                                 <video id="tv-webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
                                 
                                 <div id="gesture-feedback" class="hidden absolute bottom-2 left-2 right-2 bg-emerald-600/95 text-white text-xs font-bold py-2 px-3 rounded-lg text-center animate-pulse z-10 shadow-lg">
-                                    ☝️ ตรวจพบท่าชูนิ้วชี้! กำลังออกคิวใหม่...
+                                    ✌️ ตรวจพบท่าชูสองนิ้ว! กำลังออกคิวใหม่...
                                 </div>
 
                                 <div id="webcam-error" class="hidden absolute inset-0 bg-slate-950 p-4 text-center flex flex-col items-center justify-center text-xs text-red-400">
@@ -668,10 +668,10 @@
                         
                         <div class="rounded-xl shadow-lg border border-slate-700 bg-slate-900 w-full p-6 flex flex-col items-center justify-center flex-shrink-0 min-h-[260px] relative">
                             <div id="tv-kiosk-idle" class="flex flex-col items-center justify-center text-center w-full animate-fade-in">
-                                <i class="fa-solid fa-hand-pointer text-5xl text-slate-500 mb-4 animate-bounce"></i>
+                                <i class="fa-solid fa-hand-peace text-5xl text-slate-500 mb-4 animate-bounce"></i>
                                 <h3 class="text-xl font-bold text-slate-300 mb-2">รับบัตรคิว</h3>
                                 <p class="text-slate-500 text-sm mb-1">
-                                    ชูนิ้วชี้ ☝️ ให้กล้องเพื่อรับคิว
+                                    ชูสองนิ้ว ✌️ ให้กล้องเพื่อรับคิว
                                 </p>
                                 <p class="text-slate-600 text-[11px]">
                                     หรือกดคีย์ลัด <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-400 font-mono text-[10px]">Alt+Shift+Q</kbd>
@@ -693,17 +693,17 @@
                 </div>
             `;
             
-            // ฟังก์ชันเปิดกล้องเว็บแคมพร้อมผูกกับโมเดล AI ของ MediaPipe Hands
+            // เปิดกล้องและประมวลผลด้วยโมเดล AI MediaPipe
             const startWebcamWithAI = async () => {
                 const videoEl = document.getElementById('tv-webcam');
                 const errorEl = document.getElementById('webcam-error');
                 const feedbackEl = document.getElementById('gesture-feedback');
 
                 if (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
-                    console.error("MediaPipe not loaded correctly.");
+                    console.error("MediaPipe libraries not loaded correctly.");
                     if(errorEl) {
                         errorEl.classList.remove('hidden');
-                        errorEl.innerText = "กำลังดาวน์โหลดโมเดลตรวจจับท่าทาง...";
+                        errorEl.innerText = "กำลังดาวน์โหลดระบบตรวจจับพิกัดมือ...";
                     }
                     return;
                 }
@@ -714,7 +714,7 @@
                     });
 
                     hands.setOptions({
-                        maxNumHands: 1, // ตรวจจับครั้งละ 1 มือเพื่อความเร็วและแม่นยำ
+                        maxNumHands: 1, // ตรวจจับครั้งละ 1 มือเพื่อประสิทธิภาพความเร็วสูงสุด
                         modelComplexity: 1,
                         minDetectionConfidence: 0.75,
                         minTrackingConfidence: 0.75
@@ -726,31 +726,33 @@
                         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                             const landmarks = results.multiHandLandmarks[0];
 
-                            // [ algorithm ตรวจสอบการทำมือชูนิ้วชี้ - Pointing Index Up ]
-                            // ในพิกัด MediaPipe ค่า Y: 0 คือบนสุด และ 1 คือล่างสุด (ค่าน้อยคืออยู่สูง)
-
-                            // นิ้วชี้เหยียดตรงชี้ขึ้นฟ้า
-                            const isIndexPointingUp = landmarks[8].y < landmarks[7].y && landmarks[7].y < landmarks[6].y;
-
-                            // นิ้วโป้งพับเก็บ
-                            const isThumbFolded = landmarks[4].y > landmarks[3].y;
-
-                            // นิ้วอื่นอีก 3 นิ้ว (กลาง, นาง, ก้อย) ต้องพับเก็บ (ปลายเล็บอยู่ต่ำกว่าข้อต่อ PIP - ค่ายิ่งมากยิ่งต่ำ)
-                            const isMiddleFolded = landmarks[12].y > landmarks[10].y;
+                            // [ อัลกอริทึมตรวจสอบการชูสองนิ้ว - ✌️ Peace Sign ]
+                            // ในระบบพิกัด MediaPipe ค่าแกน Y: 0 อยู่ขอบบน และ 1 อยู่ขอบล่าง (ค่าน้อยกว่าคืออยู่ตำแหน่งสูงกว่า)
+                            
+                            // 1. นิ้วชี้เหยียดตรง (ปลายนิ้ว 8 อยู่สูงกว่าข้อต่อส่วนกลาง 6)
+                            const isIndexUp = landmarks[8].y < landmarks[6].y;
+                            
+                            // 2. นิ้วกลางเหยียดตรง (ปลายนิ้ว 12 อยู่สูงกว่าข้อต่อส่วนกลาง 10)
+                            const isMiddleUp = landmarks[12].y < landmarks[10].y;
+                            
+                            // 3. นิ้วนางต้องพับลงมา (ปลายนิ้ว 16 อยู่ต่ำกว่าข้อต่อส่วนกลาง 14)
                             const isRingFolded = landmarks[16].y > landmarks[14].y;
+                            
+                            // 4. นิ้วก้อยต้องพับลงมา (ปลายนิ้ว 20 อยู่ต่ำกว่าข้อต่อส่วนกลาง 18)
                             const isPinkyFolded = landmarks[20].y > landmarks[18].y;
 
-                            if (isIndexPointingUp && isThumbFolded && isMiddleFolded && isRingFolded && isPinkyFolded) {
+                            // หากตรงเงื่อนไข ชูสองนิ้ว ครบถ้วน
+                            if (isIndexUp && isMiddleUp && isRingFolded && isPinkyFolded) {
                                 if (!gestureCooldown && !isGenerating) {
                                     gestureCooldown = true;
                                     
-                                    // เด้งแถบแจ้งเตือนสีเขียวขึ้นบนกรอบกล้อง
+                                    // แสดงสถานะสีเขียวบนจอภาพเว็บแคม
                                     if (feedbackEl) feedbackEl.classList.remove('hidden');
 
-                                    // เรียกขอบัตรคิวใหม่ขึ้น Firebase
+                                    // สร้างคิวใหม่ลงฐานข้อมูล
                                     createNewQueue();
 
-                                    // ตั้งคูลดาวน์กล้อง 3 วินาทีก่อนที่จะสแกนมือรอบใหม่ได้ (กันคิวเด้งรัว)
+                                    // ตั้งคูลดาวน์ป้องกันการออกคิวรัวๆ เป็นเวลา 3 วินาที
                                     setTimeout(() => {
                                         gestureCooldown = false;
                                         if (feedbackEl) feedbackEl.classList.add('hidden');
@@ -770,12 +772,12 @@
                     camera.start();
 
                 } catch (err) {
-                    console.error("Webcam AI activation failed:", err);
+                    console.error("Webcam AI setup failed:", err);
                     if (errorEl) errorEl.classList.remove('hidden');
                 }
             };
 
-            // เรียกเปิดกล้องระบบ AI
+            // เรียกเปิดใช้งานกล้อง AI
             startWebcamWithAI();
 
             document.getElementById('sound-overlay').onclick = function() {
