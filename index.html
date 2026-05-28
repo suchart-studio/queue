@@ -595,8 +595,8 @@
             });
         };
 
-        // ==========================================
-        // 4. TV DISPLAY MODE (พร้อมระบบออกคิวในตัว)
+       // ==========================================
+        // 4. TV DISPLAY MODE (พร้อมกล้องเว็บแคม และระบบออกคิวในตัว)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
@@ -611,20 +611,40 @@
                             <h2 class="text-2xl font-bold">คลิกที่นี่เพื่อเปิดใช้งานหน้าจอ</h2>
                         </div>
                     </div>
+                    
                     <div class="w-2/3 p-8 flex flex-col border-r border-slate-800">
                         <h1 class="text-4xl font-bold text-slate-400 mb-6 tracking-wider">กำลังเรียก <span class="text-emerald-500">NOW SERVING</span></h1>
                         <div id="tv-serving-list" class="grid grid-cols-1 gap-4 h-full overflow-hidden pb-4"></div>
                     </div>
-                    <div class="w-1/3 bg-slate-800 p-8 flex flex-col shadow-2xl">
-                        <h2 class="text-2xl font-bold text-slate-400 mb-6 pb-4 border-b border-slate-700">คิวถัดไป / NEXT</h2>
-                        <ul id="tv-waiting-list" class="space-y-4 mb-6 flex-1 overflow-hidden"></ul>
+                    
+                    <div class="w-1/3 bg-slate-800 p-8 flex flex-col shadow-2xl justify-between overflow-y-auto">
                         
-                        <div class="mt-auto rounded-xl shadow-lg border border-slate-700 bg-slate-900 w-full p-6 flex flex-col items-center justify-center flex-shrink-0 min-h-[280px] relative">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-400 mb-4 pb-4 border-b border-slate-700">คิวถัดไป / NEXT</h2>
+                            <ul id="tv-waiting-list" class="mb-6"></ul>
+                        </div>
+                        
+                        <div class="mb-4 flex flex-col flex-1 justify-center">
+                            <p class="text-xs text-slate-500 mb-2 font-semibold flex items-center gap-1.5">
+                                <i class="fa-solid fa-video text-emerald-500 animate-pulse"></i> Live Camera Feed
+                            </p>
+                            <div class="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video w-full shadow-inner flex items-center justify-center">
+                                <video id="tv-webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                                <div id="webcam-error" class="hidden absolute inset-0 bg-slate-950 p-4 text-center flex flex-col items-center justify-center text-xs text-red-400">
+                                    <i class="fa-solid fa-camera-rotable text-2xl mb-2 text-slate-600"></i>
+                                    ไม่สามารถเข้าถึงกล้องเว็บแคมได้<br><span class="text-[10px] text-slate-500 mt-1">(กรุณาตรวจสอบการเชื่อมต่อและอนุญาตสิทธิ์กล้อง)</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="rounded-xl shadow-lg border border-slate-700 bg-slate-900 w-full p-6 flex flex-col items-center justify-center flex-shrink-0 min-h-[260px] relative">
                             
                             <div id="tv-kiosk-idle" class="flex flex-col items-center justify-center text-center w-full animate-fade-in">
-                                <i class="fa-solid fa-circle-dot text-5xl text-slate-500 mb-4 animate-bounce"></i>
-                                <h1 class="text-xl font-bold text-slate-300 mb-2">กดปุ่มแล้วใช้มือถือสแกน QR Code <br>เพื่อรับบัตรคิว</h1>
-                             
+                                <i class="fa-solid fa-hand-pointer text-5xl text-slate-500 mb-4 animate-bounce"></i>
+                                <h3 class="text-xl font-bold text-slate-300 mb-2">รับบัตรคิว</h3>
+                                <p class="text-slate-500 text-sm">
+                                    กด <kbd class="px-2 py-1 bg-slate-800 border border-slate-600 rounded text-slate-300 font-mono text-xs">Alt+Shift+Q</kbd> เพื่อออกคิวใหม่
+                                </p>
                             </div>
                             
                             <div id="tv-kiosk-result" class="hidden flex-col items-center justify-center text-center w-full animate-fade-in">
@@ -644,12 +664,27 @@
                 </div>
             `;
             
+            // เรียกเปิดใช้งานกล้องเว็บแคม
+            const startWebcam = async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+                    const videoEl = document.getElementById('tv-webcam');
+                    if (videoEl) videoEl.srcObject = stream;
+                } catch (err) {
+                    console.error("Webcam Error:", err);
+                    const errorEl = document.getElementById('webcam-error');
+                    if (errorEl) errorEl.classList.remove('hidden');
+                }
+            };
+
+            // เริ่มกล้องทันที
+            startWebcam();
+
             document.getElementById('sound-overlay').onclick = function() {
                 this.remove();
                 playBeep('normal');
             };
 
-            // ฟังก์ชันรีเซ็ตกลับไปหน้าจอรอรับคิว
             const resetTvKioskUI = () => {
                 const resultBox = document.getElementById('tv-kiosk-result');
                 const idleBox = document.getElementById('tv-kiosk-idle');
@@ -667,10 +702,9 @@
                 if(currentUnsubscribe) currentUnsubscribe(); 
             };
 
-            // ฟังก์ชันสร้างคิวเมื่อกด Shortkey ในหน้า TV
             const generateTvQueue = async () => {
                 const idleBox = document.getElementById('tv-kiosk-idle');
-                if(idleBox.classList.contains('hidden')) return; // กำลังโชว์คิวอยู่ ห้ามกดซ้ำ
+                if(idleBox.classList.contains('hidden')) return; 
 
                 const qRef = push(ref(db, 'queues'));
                 const qNum = "A" + Math.floor(100 + Math.random() * 900);
@@ -694,8 +728,8 @@
                     document.getElementById('tv-kiosk-qrcode').innerHTML = '';
                     new QRCode(document.getElementById('tv-kiosk-qrcode'), {
                         text: trackingUrl,
-                        width: 120,
-                        height: 120,
+                        width: 125,
+                        height: 125,
                         colorDark : "#0f172a",
                         colorLight : "#ffffff",
                         correctLevel : QRCode.CorrectLevel.H
@@ -708,10 +742,8 @@
                         if(qrCanvas) qrCanvas.classList.add('mx-auto');
                     }, 50);
 
-                    // ปิดอัตโนมัติเมื่อครบ 30 วิ
                     resetTimer = setTimeout(() => resetTvKioskUI(), 30000);
                     
-                    // ปิดอัตโนมัติเมื่อมือถือสแกนและโหลดหน้าตั๋วคิวสำเร็จ
                     currentUnsubscribe = onValue(qRef, (snapshot) => {
                         const data = snapshot.val();
                         if (data && data.scanned === true) resetTvKioskUI();
@@ -723,7 +755,6 @@
                 }
             };
 
-            // ดักจับการกด Shortcut `Alt + Shift + Q` จากฝั่ง TV
             window.addEventListener('keydown', (e) => {
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
                 
@@ -733,7 +764,6 @@
                 }
             });
 
-            // ระบบเสียงพูด
             const speak = (text) => {
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
@@ -756,7 +786,6 @@
                 window.speechSynthesis.speak(utterance);
             };
 
-            // ดึงข้อมูลคิวแสดงผล
             onValue(ref(db, 'queues'), (snapshot) => {
                 const queues = Object.values(snapshot.val() || {});
                 const serving = queues.filter(q => q.status === 'serving').sort((a,b) => b.callTime - a.callTime);
@@ -789,13 +818,23 @@
                     </div>`;
                 }).join('');
                 
-                const waiting = queues.filter(q => q.status === 'waiting').sort((a,b) => a.timestamp - b.timestamp).slice(0, 5);
-                document.getElementById('tv-waiting-list').innerHTML = waiting.map(q => `
-                    <li class="flex items-center gap-6 text-slate-200 bg-slate-700/50 p-4 rounded-xl border border-slate-700">
-                        <i class="fa-solid fa-circle text-sm text-yellow-500 animate-pulse"></i>
-                        <span class="font-mono font-black text-6xl tracking-wider">${q.number}</span>
-                    </li>
-                `).join('');
+                // [แก้ไขสำคัญ] ปรับให้แสดงคิวถัดไปเพียงลำดับเดียว (slice(0, 1))
+                const waiting = queues.filter(q => q.status === 'waiting').sort((a,b) => a.timestamp - b.timestamp).slice(0, 1);
+                
+                if (waiting.length > 0) {
+                    document.getElementById('tv-waiting-list').innerHTML = waiting.map(q => `
+                        <li class="flex items-center gap-6 text-slate-200 bg-slate-700/50 p-4 rounded-xl border border-slate-700 animate-fade-in">
+                            <i class="fa-solid fa-circle text-sm text-yellow-500 animate-pulse"></i>
+                            <span class="font-mono font-black text-6xl tracking-wider">${q.number}</span>
+                        </li>
+                    `).join('');
+                } else {
+                    document.getElementById('tv-waiting-list').innerHTML = `
+                        <li class="text-slate-500 text-center py-4 border border-dashed border-slate-700 rounded-xl text-sm">
+                            ไม่มีคิวรอในขณะนี้
+                        </li>
+                    `;
+                }
             });
         };
 
