@@ -11,6 +11,9 @@
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
     <style>
         body { font-family: 'Sarabun', sans-serif; }
         @keyframes pulse-green {
@@ -44,7 +47,7 @@
         }
 
         // ==========================================
-        // --- CONFIG (ใส่ค่าของคุณที่นี่) ---
+        // --- CONFIG ---
         // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyDGYuI3yxJbUTc6T_0pm6WiEKZul11tXS0",
@@ -67,6 +70,34 @@
         const params = new URLSearchParams(window.location.search);
         const mode = params.get('mode') || 'kiosk'; 
         const AVG_SERVICE_TIME = 5; 
+
+        // ==========================================
+        // ฟังก์ชันส่วนกลางสำหรับสร้างคิวใหม่ (Shared Logic)
+        // ==========================================
+        let isGenerating = false;
+        const createNewQueue = async () => {
+            if (isGenerating) return null;
+            isGenerating = true;
+
+            const qRef = push(ref(db, 'queues'));
+            const qNum = "A" + Math.floor(100 + Math.random() * 900);
+            
+            try {
+                await set(qRef, { 
+                    number: qNum, 
+                    status: 'waiting', 
+                    timestamp: Date.now(), 
+                    scanned: false 
+                });
+                return { key: qRef.key, number: qNum };
+            } catch (error) {
+                console.error("Firebase Sync Error:", error);
+                return null;
+            } finally {
+                // หน่วงเวลากันระบบออกคิวซ้ำซ้อนภายใน 1.5 วินาที
+                setTimeout(() => { isGenerating = false; }, 1500);
+            }
+        };
 
         // --------------------------------------------------------
         // ระบบเสียง (User: Alarm / TV: Normal)
@@ -125,7 +156,7 @@
         };
 
         // ==========================================
-        // 1. KIOSK MODE (คงไว้เผื่อใช้งานในแท็บเล็ตแยก)
+        // 1. KIOSK MODE 
         // ==========================================
         const renderKiosk = (container) => {
             let resetTimer = null;
@@ -186,14 +217,10 @@
                 btnGetQ.disabled = true;
                 btnGetQ.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin"></i> กำลังออกคิว...`;
 
-                const qRef = push(ref(db, 'queues'));
-                const qNum = "A" + Math.floor(100 + Math.random() * 900);
-                
-                try {
-                    await set(qRef, { number: qNum, status: 'waiting', timestamp: Date.now(), scanned: false });
-                    
+                const res = await createNewQueue();
+                if (res) {
                     const baseUrl = window.location.href.split('?')[0]; 
-                    const trackingUrl = `${baseUrl}?mode=user&id=${qRef.key}`;
+                    const trackingUrl = `${baseUrl}?mode=user&id=${res.key}`;
 
                     if (window.innerWidth <= 768) {
                         window.location.href = trackingUrl;
@@ -206,7 +233,7 @@
                     document.getElementById('btn-get-q').style.display = 'none';
                     document.getElementById('welcome-text').style.display = 'none';
                     document.getElementById('shortcut-hint').style.display = 'none';
-                    document.getElementById('q-number').innerText = qNum;
+                    document.getElementById('q-number').innerText = res.number;
                     document.getElementById('kiosk-result').classList.remove('hidden');
                     
                     document.getElementById('qr-code').innerHTML = '';
@@ -227,13 +254,11 @@
                     }, 50);
 
                     resetTimer = setTimeout(() => resetKioskUI(), 30000);
-                    currentUnsubscribe = onValue(qRef, (snapshot) => {
+                    currentUnsubscribe = onValue(ref(db, 'queues/' + res.key), (snapshot) => {
                         const data = snapshot.val();
                         if (data && data.scanned === true) resetKioskUI();
                     });
-
-                } catch (error) {
-                    console.error("Firebase Error:", error);
+                } else {
                     alert("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
                     btnGetQ.disabled = false;
                     btnGetQ.innerHTML = `<i class="fa-solid fa-ticket"></i> กดรับคิว`;
@@ -270,7 +295,7 @@
             container.innerHTML = `
                 <div class="min-h-screen bg-gray-50 flex flex-col items-center p-6 transition-colors duration-500" id="user-bg">
                     <button id="btn-enable-sound" class="mb-4 bg-gray-200 text-gray-600 px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 shadow-sm animate-bounce">
-                        <i class="fa-solid fa-volume-xmark"></i> แตะเพื่อเปิดการแจ้งเตือน
+                        <i class="fa-solid fa-volume-xmark"></i> แแตะเพื่อเปิดการแจ้งเตือน
                     </button>
                     <div id="capture-area" class="bg-white w-full max-w-sm rounded-3xl shadow-xl p-8 text-center relative overflow-hidden border border-gray-100">
                         <div class="border-b border-gray-100 pb-4 mb-4">
@@ -595,13 +620,13 @@
             });
         };
 
-       // ==========================================
-        // 4. TV DISPLAY MODE 
+        // ==========================================
+        // 4. TV DISPLAY MODE (รวมระบบ AI ตรวจหาการยกนิ้วโป้ง 👍)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
             let resetTimer = null;
-            let currentlyShowingQID = null; // ตัวแปรใหม่ไว้เช็คว่ากำลังโชว์คิวไหนอยู่
+            let currentlyShowingQID = null; 
 
             container.innerHTML = `
                 <div class="relative w-screen h-screen bg-slate-900 text-white overflow-hidden flex">
@@ -625,10 +650,15 @@
                         
                         <div class="mb-4 flex flex-col flex-1 justify-center">
                             <p class="text-xs text-slate-500 mb-2 font-semibold flex items-center gap-1.5">
-                                <i class="fa-solid fa-video text-emerald-500 animate-pulse"></i> Live Camera Feed
+                                <i class="fa-solid fa-video text-emerald-500 animate-pulse"></i> Live AI Camera Feed
                             </p>
                             <div class="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video w-full shadow-inner flex items-center justify-center">
                                 <video id="tv-webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                                
+                                <div id="gesture-feedback" class="hidden absolute bottom-2 left-2 right-2 bg-emerald-600/95 text-white text-xs font-bold py-2 px-3 rounded-lg text-center animate-pulse z-10 shadow-lg">
+                                    👍 ตรวจพบท่ายกนิ้วโป้ง! กำลังออกคิวใหม่...
+                                </div>
+
                                 <div id="webcam-error" class="hidden absolute inset-0 bg-slate-950 p-4 text-center flex flex-col items-center justify-center text-xs text-red-400">
                                     <i class="fa-solid fa-camera-rotable text-2xl mb-2 text-slate-600"></i>
                                     ไม่สามารถเข้าถึงกล้องเว็บแคมได้
@@ -640,8 +670,11 @@
                             <div id="tv-kiosk-idle" class="flex flex-col items-center justify-center text-center w-full animate-fade-in">
                                 <i class="fa-solid fa-hand-pointer text-5xl text-slate-500 mb-4 animate-bounce"></i>
                                 <h3 class="text-xl font-bold text-slate-300 mb-2">รับบัตรคิว</h3>
-                                <p class="text-slate-500 text-sm">
-                                    กด <kbd class="px-2 py-1 bg-slate-800 border border-slate-600 rounded text-slate-300 font-mono text-xs">Alt+Shift+Q</kbd> เพื่อออกคิวใหม่
+                                <p class="text-slate-500 text-sm mb-1">
+                                    ยกนิ้วโป้ง 👍 ให้กล้องเพื่อรับคิว
+                                </p>
+                                <p class="text-slate-600 text-[11px]">
+                                    หรือกดคีย์ลัด <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-400 font-mono text-[10px]">Alt+Shift+Q</kbd>
                                 </p>
                             </div>
                             <div id="tv-kiosk-result" class="hidden flex-col items-center justify-center text-center w-full animate-fade-in">
@@ -660,17 +693,87 @@
                 </div>
             `;
             
-            const startWebcam = async () => {
+            // ฟังก์ชันเปิดกล้องเว็บแคมพร้อมผูกกับโมเดล AI ของ MediaPipe Hands
+            const startWebcamWithAI = async () => {
+                const videoEl = document.getElementById('tv-webcam');
+                const errorEl = document.getElementById('webcam-error');
+                const feedbackEl = document.getElementById('gesture-feedback');
+
+                if (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
+                    console.error("MediaPipe not loaded correctly.");
+                    if(errorEl) {
+                        errorEl.classList.remove('hidden');
+                        errorEl.innerText = "กำลังดาวน์โหลดโมเดลตรวจจับท่าทาง...";
+                    }
+                    return;
+                }
+
                 try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
-                    const videoEl = document.getElementById('tv-webcam');
-                    if (videoEl) videoEl.srcObject = stream;
+                    const hands = new Hands({
+                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                    });
+
+                    hands.setOptions({
+                        maxNumHands: 1, // ตรวจจับครั้งละ 1 มือเพื่อความเร็วและแม่นยำ
+                        modelComplexity: 1,
+                        minDetectionConfidence: 0.75,
+                        minTrackingConfidence: 0.75
+                    });
+
+                    let gestureCooldown = false;
+
+                    hands.onResults((results) => {
+                        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                            const landmarks = results.multiHandLandmarks[0];
+
+                            // [ algorithm ตรวจสอบการทำมือยกนิ้วโป้ง - Thumbs Up ]
+                            // ในพิกัด MediaPipe ค่า Y: 0 คือบนสุด และ 1 คือล่างสุด
+                            // ยกนิ้วโป้ง = ปลายเล็บนิ้วโป้ง (4) ต้องมีค่า Y น้อยกว่าข้อต่อ (3) และ (2) (แปลว่าชี้ขึ้นฟ้า)
+                            const isThumbUp = landmarks[4].y < landmarks[3].y && landmarks[3].y < landmarks[2].y;
+
+                            // นิ้วอื่นอีก 4 นิ้วต้องพับเก็บ (ปลายเล็บอยู่ต่ำกว่าข้อต่อ PIP เสมอ เช่น จุดที่ 8 อยู่ล่างจุดที่ 6)
+                            const isIndexFolded = landmarks[8].y > landmarks[6].y;
+                            const isMiddleFolded = landmarks[12].y > landmarks[10].y;
+                            const isRingFolded = landmarks[16].y > landmarks[14].y;
+                            const isPinkyFolded = landmarks[20].y > landmarks[18].y;
+
+                            if (isThumbUp && isIndexFolded && isMiddleFolded && isRingFolded && isPinkyFolded) {
+                                if (!gestureCooldown && !isGenerating) {
+                                    gestureCooldown = true;
+                                    
+                                    // เด้งแถบแจ้งเตือนสีเขียวขึ้นบนกรอบกล้อง
+                                    if (feedbackEl) feedbackEl.classList.remove('hidden');
+
+                                    // เรียกขอบัตรคิวใหม่ขึ้น Firebase
+                                    createNewQueue();
+
+                                    // ตั้งคูลดาวน์กล้อง 3 วินาทีก่อนที่จะสแกนมือรอบใหม่ได้ (กันคิวเด้งรัว)
+                                    setTimeout(() => {
+                                        gestureCooldown = false;
+                                        if (feedbackEl) feedbackEl.classList.add('hidden');
+                                    }, 3000);
+                                }
+                            }
+                        }
+                    });
+
+                    const camera = new Camera(videoEl, {
+                        onFrame: async () => {
+                            await hands.send({image: videoEl});
+                        },
+                        width: 640,
+                        height: 480
+                    });
+                    camera.start();
+
                 } catch (err) {
-                    const errorEl = document.getElementById('webcam-error');
+                    console.error("Webcam AI activation failed:", err);
                     if (errorEl) errorEl.classList.remove('hidden');
                 }
             };
-            startWebcam();
+
+            // เรียกเปิดกล้องระบบ AI
+            startWebcamWithAI();
 
             document.getElementById('sound-overlay').onclick = function() {
                 this.remove();
@@ -689,14 +792,14 @@
             };
 
             const showKioskQR = (qID, qNum) => {
-                if (currentlyShowingQID === qID) return; // ถ้ากำลังโชว์คิวนี้อยู่แล้วให้ข้ามไป
+                if (currentlyShowingQID === qID) return; 
                 currentlyShowingQID = qID;
 
                 const resultBox = document.getElementById('tv-kiosk-result');
                 const idleBox = document.getElementById('tv-kiosk-idle');
                 
-                idleBox.classList.remove('flex'); idleBox.classList.add('hidden');
-                resultBox.classList.remove('hidden'); resultBox.classList.add('flex');
+                if(idleBox) { idleBox.classList.remove('flex'); idleBox.classList.add('hidden'); }
+                if(resultBox) { resultBox.classList.remove('hidden'); resultBox.classList.add('flex'); }
                 
                 document.getElementById('tv-q-number').innerText = qNum;
                 
@@ -717,7 +820,7 @@
                 }, 50);
 
                 if (resetTimer) clearTimeout(resetTimer);
-                resetTimer = setTimeout(() => { resetTvKioskUI(); }, 30000); // 30 วิปิดหน้าต่างเอง
+                resetTimer = setTimeout(() => { resetTvKioskUI(); }, 30000); 
             };
 
             const speak = (text) => {
@@ -733,29 +836,24 @@
                 window.speechSynthesis.speak(utterance);
             };
 
-            // ศูนย์กลางการจัดการ State ทั้งหมดผ่าน Firebase
             onValue(ref(db, 'queues'), (snapshot) => {
                 const data = snapshot.val() || {};
                 const queues = Object.entries(data).map(([id, val]) => ({id, ...val}));
                 
-                // 1. ตรวจสอบว่ามีคิวใหม่ถูกสร้างเข้ามาหรือไม่ (เพื่อโชว์ QR Code)
                 const waitingQueues = queues.filter(q => q.status === 'waiting').sort((a,b) => b.timestamp - a.timestamp);
                 if (waitingQueues.length > 0) {
                     const newest = waitingQueues[0];
                     const age = Date.now() - newest.timestamp;
                     
-                    // ถ้ามีคิวเพิ่งสร้างใหม่ (ไม่เกิน 30 วิ) และยังไม่ได้สแกน
                     if (age < 30000 && newest.scanned === false) {
                         showKioskQR(newest.id, newest.number);
                     } else {
-                        // ถ้าสแกนแล้ว หรือเกิน 30 วิ ให้กลับไปหน้าพัก
                         if (currentlyShowingQID) resetTvKioskUI();
                     }
                 } else {
                     if (currentlyShowingQID) resetTvKioskUI();
                 }
 
-                // 2. จัดการเสียงเรียกคิวและ Now Serving
                 const serving = queues.filter(q => q.status === 'serving').sort((a,b) => b.callTime - a.callTime);
                 if (serving.length > 0) {
                     const latest = serving[0];
@@ -783,7 +881,6 @@
                     </div>`;
                 }).join('');
                 
-                // 3. จัดการคิวถัดไป (NEXT)
                 const nextInLine = queues.filter(q => q.status === 'waiting').sort((a,b) => a.timestamp - b.timestamp).slice(0, 1);
                 if (nextInLine.length > 0) {
                     document.getElementById('tv-waiting-list').innerHTML = nextInLine.map(q => `
@@ -803,38 +900,15 @@
         };
 
         // ==========================================
-        // 5. GLOBAL SHORTCUT (ทำงานทุกหน้าต่าง เพื่อให้ Staff กดออกคิวให้ TV ได้)
+        // 5. GLOBAL SHORTCUT 
         // ==========================================
-        let isGenerating = false;
         window.addEventListener('keydown', async (e) => {
-            // ป้องกันไม่ให้ทำงานตอนกำลังพิมพ์ในช่องกรอกข้อความ (ถ้ามีในอนาคต)
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             
             if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'q') {
                 e.preventDefault(); 
-                
-                // ถ้าอยู่หน้าโหมด Kiosk ตัวเก่า มันมีระบบปุ่มกดของมันเองอยู่แล้ว ให้ข้ามไป
-                if (mode === 'kiosk') return;
-
-                if (isGenerating) return; // กันกดเบิ้ลรัวๆ
-                isGenerating = true;
-
-                const qRef = push(ref(db, 'queues'));
-                const qNum = "A" + Math.floor(100 + Math.random() * 900);
-                
-                try {
-                    // แค่สร้างคิวใหม่ลง Firebase (หน้า TV จะจับสัญญาณและเด้งโชว์ QR เองอัตโนมัติ)
-                    await set(qRef, { 
-                        number: qNum, 
-                        status: 'waiting', 
-                        timestamp: Date.now(), 
-                        scanned: false 
-                    });
-                } catch (error) {
-                    console.error("Firebase Error:", error);
-                } finally {
-                    setTimeout(() => { isGenerating = false; }, 1000); 
-                }
+                if (mode === 'kiosk') return; 
+                createNewQueue();
             }
         });
 
