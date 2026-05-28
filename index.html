@@ -125,7 +125,7 @@
         };
 
         // ==========================================
-        // 1. KIOSK MODE
+        // 1. KIOSK MODE (คงไว้เผื่อใช้งานในแท็บเล็ตแยก)
         // ==========================================
         const renderKiosk = (container) => {
             let resetTimer = null;
@@ -181,48 +181,63 @@
                 </div>
             `;
             
-            document.getElementById('btn-get-q').onclick = () => {
+            document.getElementById('btn-get-q').onclick = async () => {
+                const btnGetQ = document.getElementById('btn-get-q');
+                btnGetQ.disabled = true;
+                btnGetQ.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin"></i> กำลังออกคิว...`;
+
                 const qRef = push(ref(db, 'queues'));
                 const qNum = "A" + Math.floor(100 + Math.random() * 900);
-                set(qRef, { number: qNum, status: 'waiting', timestamp: Date.now(), scanned: false });
                 
-                const baseUrl = window.location.href.split('?')[0]; 
-                const trackingUrl = `${baseUrl}?mode=user&id=${qRef.key}`;
+                try {
+                    await set(qRef, { number: qNum, status: 'waiting', timestamp: Date.now(), scanned: false });
+                    
+                    const baseUrl = window.location.href.split('?')[0]; 
+                    const trackingUrl = `${baseUrl}?mode=user&id=${qRef.key}`;
 
-                // ถ้าเข้าผ่านมือถือ (หน้าจอเล็ก) ให้รีไดเรกต์ไปหน้า User อัตโนมัติ
-                if (window.innerWidth <= 768) {
-                    window.location.href = trackingUrl;
-                    return;
+                    if (window.innerWidth <= 768) {
+                        window.location.href = trackingUrl;
+                        return;
+                    }
+                    
+                    btnGetQ.disabled = false;
+                    btnGetQ.innerHTML = `<i class="fa-solid fa-ticket"></i> กดรับคิว`;
+                    
+                    document.getElementById('btn-get-q').style.display = 'none';
+                    document.getElementById('welcome-text').style.display = 'none';
+                    document.getElementById('shortcut-hint').style.display = 'none';
+                    document.getElementById('q-number').innerText = qNum;
+                    document.getElementById('kiosk-result').classList.remove('hidden');
+                    
+                    document.getElementById('qr-code').innerHTML = '';
+                    new QRCode(document.getElementById('qr-code'), {
+                        text: trackingUrl,
+                        width: 150,
+                        height: 150,
+                        colorDark : "#000000",
+                        colorLight : "#ffffff",
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
+
+                    setTimeout(() => {
+                        const qrImg = document.querySelector('#qr-code img');
+                        const qrCanvas = document.querySelector('#qr-code canvas');
+                        if(qrImg) qrImg.classList.add('mx-auto');
+                        if(qrCanvas) qrCanvas.classList.add('mx-auto');
+                    }, 50);
+
+                    resetTimer = setTimeout(() => resetKioskUI(), 30000);
+                    currentUnsubscribe = onValue(qRef, (snapshot) => {
+                        const data = snapshot.val();
+                        if (data && data.scanned === true) resetKioskUI();
+                    });
+
+                } catch (error) {
+                    console.error("Firebase Error:", error);
+                    alert("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+                    btnGetQ.disabled = false;
+                    btnGetQ.innerHTML = `<i class="fa-solid fa-ticket"></i> กดรับคิว`;
                 }
-                
-                document.getElementById('btn-get-q').style.display = 'none';
-                document.getElementById('welcome-text').style.display = 'none';
-                document.getElementById('shortcut-hint').style.display = 'none';
-                document.getElementById('q-number').innerText = qNum;
-                document.getElementById('kiosk-result').classList.remove('hidden');
-                
-                document.getElementById('qr-code').innerHTML = '';
-                new QRCode(document.getElementById('qr-code'), {
-                    text: trackingUrl,
-                    width: 150,
-                    height: 150,
-                    colorDark : "#000000",
-                    colorLight : "#ffffff",
-                    correctLevel : QRCode.CorrectLevel.H
-                });
-
-                setTimeout(() => {
-                    const qrImg = document.querySelector('#qr-code img');
-                    const qrCanvas = document.querySelector('#qr-code canvas');
-                    if(qrImg) qrImg.classList.add('mx-auto');
-                    if(qrCanvas) qrCanvas.classList.add('mx-auto');
-                }, 50);
-
-                resetTimer = setTimeout(() => resetKioskUI(), 30000);
-                currentUnsubscribe = onValue(qRef, (snapshot) => {
-                    const data = snapshot.val();
-                    if (data && data.scanned === true) resetKioskUI();
-                });
             };
             
             document.getElementById('btn-cancel').onclick = resetKioskUI;
@@ -289,7 +304,6 @@
             `;
 
             const btnSound = document.getElementById('btn-enable-sound');
-            
             const btnPip = document.getElementById('btn-pip');
             const canvas = document.createElement('canvas');
             canvas.width = 400; canvas.height = 400;
@@ -317,13 +331,10 @@
             const updatePiPWindow = (qNum, qAhead, status) => {
                 ctx.fillStyle = status === 'serving' ? '#10b981' : '#1e293b'; 
                 ctx.fillRect(0, 0, 400, 400);
-
                 ctx.fillStyle = 'white';
                 ctx.textAlign = 'center';
-                
                 ctx.font = '40px Sarabun';
                 ctx.fillText(status === 'serving' ? 'ถึงคิวของคุณแล้ว!' : 'คิวของคุณ', 200, 100);
-                
                 ctx.font = 'bold 120px Sarabun';
                 ctx.fillText(qNum || '-', 200, 240);
                 
@@ -585,10 +596,13 @@
         };
 
         // ==========================================
-        // 4. TV DISPLAY MODE
+        // 4. TV DISPLAY MODE (พร้อมระบบออกคิวในตัว)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
+            let resetTimer = null;
+            let currentUnsubscribe = null;
+
             container.innerHTML = `
                 <div class="relative w-screen h-screen bg-slate-900 text-white overflow-hidden flex">
                     <div id="sound-overlay" class="absolute inset-0 bg-black/90 z-50 flex items-center justify-center cursor-pointer">
@@ -605,10 +619,28 @@
                         <h2 class="text-2xl font-bold text-slate-400 mb-6 pb-4 border-b border-slate-700">คิวถัดไป / NEXT</h2>
                         <ul id="tv-waiting-list" class="space-y-4 mb-6 flex-1 overflow-hidden"></ul>
                         
-                        <div class="mt-auto rounded-xl shadow-lg border border-slate-700 bg-white w-full p-6 flex flex-col items-center justify-center flex-shrink-0">
-                            <h3 class="text-xl font-bold text-slate-800 mb-2"><i class="fa-solid fa-qrcode"></i> สแกนเพื่อรับคิว</h3>
-                            <div id="tv-get-q-qrcode" class="my-4 bg-white p-2 rounded-lg"></div>
-                            <p class="text-sm font-semibold text-blue-600">Scan to get a queue ticket</p>
+                        <div class="mt-auto rounded-xl shadow-lg border border-slate-700 bg-slate-900 w-full p-6 flex flex-col items-center justify-center flex-shrink-0 min-h-[280px] relative">
+                            
+                            <div id="tv-kiosk-idle" class="flex flex-col items-center justify-center text-center w-full animate-fade-in">
+                                <i class="fa-solid fa-print text-5xl text-slate-500 mb-4"></i>
+                                <h3 class="text-xl font-bold text-slate-300 mb-2">รับบัตรคิว</h3>
+                                <p class="text-slate-500 text-sm">
+                                    กด <kbd class="px-2 py-1 bg-slate-800 border border-slate-600 rounded text-slate-300 font-mono">Alt+Shift+Q</kbd> เพื่อออกคิวใหม่
+                                </p>
+                            </div>
+                            
+                            <div id="tv-kiosk-result" class="hidden flex-col items-center justify-center text-center w-full animate-fade-in">
+                                <p class="text-slate-400 text-sm mb-1">คิวของคุณคือ</p>
+                                <div id="tv-q-number" class="text-5xl font-black text-emerald-400 mb-2 tracking-tighter"></div>
+                                <div class="bg-white p-2 rounded-xl mb-2">
+                                    <div id="tv-kiosk-qrcode"></div>
+                                </div>
+                                <p class="text-xs font-bold text-slate-300">
+                                    <i class="fa-solid fa-mobile-screen-button text-emerald-500"></i> สแกนเพื่อรับตั๋วคิวเข้ามือถือ
+                                </p>
+                                <p class="text-[10px] text-slate-500 mt-1">(หน้าต่างนี้จะปิดใน 30 วินาที)</p>
+                            </div>
+
                         </div>
                     </div>
                 </div>
@@ -619,30 +651,91 @@
                 playBeep('normal');
             };
 
-            // สร้าง QR Code บนหน้าจอทีวีให้ชี้ไปยังหน้า Kiosk
-            setTimeout(() => {
-                const baseUrl = window.location.href.split('?')[0]; 
-                const scanToGetQueueUrl = `${baseUrl}?mode=kiosk`; 
+            // ฟังก์ชันรีเซ็ตกลับไปหน้าจอรอรับคิว
+            const resetTvKioskUI = () => {
+                const resultBox = document.getElementById('tv-kiosk-result');
+                const idleBox = document.getElementById('tv-kiosk-idle');
                 
-                document.getElementById('tv-get-q-qrcode').innerHTML = '';
-                new QRCode(document.getElementById('tv-get-q-qrcode'), {
-                    text: scanToGetQueueUrl,
-                    width: 220,
-                    height: 220,
-                    colorDark : "#0f172a",
-                    colorLight : "#ffffff",
-                    correctLevel : QRCode.CorrectLevel.H
-                });
+                if(resultBox) {
+                    resultBox.classList.add('hidden');
+                    resultBox.classList.remove('flex');
+                }
+                if(idleBox) {
+                    idleBox.classList.remove('hidden');
+                    idleBox.classList.add('flex');
+                }
+                
+                if(resetTimer) clearTimeout(resetTimer);
+                if(currentUnsubscribe) currentUnsubscribe(); 
+            };
 
-                // จัดกึ่งกลาง QR Code
-                setTimeout(() => {
-                    const qrImg = document.querySelector('#tv-get-q-qrcode img');
-                    const qrCanvas = document.querySelector('#tv-get-q-qrcode canvas');
-                    if(qrImg) qrImg.classList.add('mx-auto');
-                    if(qrCanvas) qrCanvas.classList.add('mx-auto');
-                }, 50);
-            }, 100);
+            // ฟังก์ชันสร้างคิวเมื่อกด Shortkey ในหน้า TV
+            const generateTvQueue = async () => {
+                const idleBox = document.getElementById('tv-kiosk-idle');
+                if(idleBox.classList.contains('hidden')) return; // กำลังโชว์คิวอยู่ ห้ามกดซ้ำ
 
+                const qRef = push(ref(db, 'queues'));
+                const qNum = "A" + Math.floor(100 + Math.random() * 900);
+                
+                try {
+                    await set(qRef, { number: qNum, status: 'waiting', timestamp: Date.now(), scanned: false });
+                    
+                    const baseUrl = window.location.href.split('?')[0]; 
+                    const trackingUrl = `${baseUrl}?mode=user&id=${qRef.key}`;
+
+                    const resultBox = document.getElementById('tv-kiosk-result');
+                    
+                    idleBox.classList.remove('flex');
+                    idleBox.classList.add('hidden');
+                    
+                    resultBox.classList.remove('hidden');
+                    resultBox.classList.add('flex');
+                    
+                    document.getElementById('tv-q-number').innerText = qNum;
+                    
+                    document.getElementById('tv-kiosk-qrcode').innerHTML = '';
+                    new QRCode(document.getElementById('tv-kiosk-qrcode'), {
+                        text: trackingUrl,
+                        width: 120,
+                        height: 120,
+                        colorDark : "#0f172a",
+                        colorLight : "#ffffff",
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
+
+                    setTimeout(() => {
+                        const qrImg = document.querySelector('#tv-kiosk-qrcode img');
+                        const qrCanvas = document.querySelector('#tv-kiosk-qrcode canvas');
+                        if(qrImg) qrImg.classList.add('mx-auto');
+                        if(qrCanvas) qrCanvas.classList.add('mx-auto');
+                    }, 50);
+
+                    // ปิดอัตโนมัติเมื่อครบ 30 วิ
+                    resetTimer = setTimeout(() => resetTvKioskUI(), 30000);
+                    
+                    // ปิดอัตโนมัติเมื่อมือถือสแกนและโหลดหน้าตั๋วคิวสำเร็จ
+                    currentUnsubscribe = onValue(qRef, (snapshot) => {
+                        const data = snapshot.val();
+                        if (data && data.scanned === true) resetTvKioskUI();
+                    });
+
+                } catch (error) {
+                    console.error("Firebase Error:", error);
+                    alert("เกิดข้อผิดพลาดในการสร้างคิว");
+                }
+            };
+
+            // ดักจับการกด Shortcut `Alt + Shift + Q` จากฝั่ง TV
+            window.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                
+                if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'q') {
+                    e.preventDefault(); 
+                    generateTvQueue();
+                }
+            });
+
+            // ระบบเสียงพูด
             const speak = (text) => {
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
@@ -665,9 +758,11 @@
                 window.speechSynthesis.speak(utterance);
             };
 
+            // ดึงข้อมูลคิวแสดงผล
             onValue(ref(db, 'queues'), (snapshot) => {
                 const queues = Object.values(snapshot.val() || {});
                 const serving = queues.filter(q => q.status === 'serving').sort((a,b) => b.callTime - a.callTime);
+                
                 if (serving.length > 0) {
                     const latest = serving[0];
                     const uniqueKey = latest.number + latest.callTime;
