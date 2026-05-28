@@ -12,6 +12,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
     <style>
@@ -47,7 +48,7 @@
         }
 
         // ==========================================
-        // --- CONFIG (ใส่ค่าของคุณที่นี่) ---
+        // --- CONFIG ---
         // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyDGYuI3yxJbUTc6T_0pm6WiEKZul11tXS0",
@@ -72,7 +73,7 @@
         const AVG_SERVICE_TIME = 5; 
 
         // ==========================================
-        // ฟังก์ชันส่วนกลางสำหรับสร้างคิวใหม่ (Shared Logic)
+        // ฟังก์ชันส่วนกลางสำหรับสร้างคิวใหม่ 
         // ==========================================
         let isGenerating = false;
         const createNewQueue = async () => {
@@ -94,13 +95,12 @@
                 console.error("Firebase Sync Error:", error);
                 return null;
             } finally {
-                // หน่วงเวลากันระบบออกคิวซ้ำซ้อนภายใน 1.5 วินาที
                 setTimeout(() => { isGenerating = false; }, 1500);
             }
         };
 
         // --------------------------------------------------------
-        // ระบบเสียง (User: Alarm / TV: Normal)
+        // ระบบเสียง
         // --------------------------------------------------------
         const playBeep = (type = 'normal') => {
             try {
@@ -238,12 +238,8 @@
                     
                     document.getElementById('qr-code').innerHTML = '';
                     new QRCode(document.getElementById('qr-code'), {
-                        text: trackingUrl,
-                        width: 150,
-                        height: 150,
-                        colorDark : "#000000",
-                        colorLight : "#ffffff",
-                        correctLevel : QRCode.CorrectLevel.H
+                        text: trackingUrl, width: 150, height: 150,
+                        colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
                     });
 
                     setTimeout(() => {
@@ -266,16 +262,6 @@
             };
             
             document.getElementById('btn-cancel').onclick = resetKioskUI;
-
-            window.addEventListener('keydown', (e) => {
-                if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'q') {
-                    const btnGetQ = document.getElementById('btn-get-q');
-                    if (btnGetQ && btnGetQ.style.display !== 'none') {
-                        e.preventDefault(); 
-                        btnGetQ.click();    
-                    }
-                }
-            });
         };
 
         // ==========================================
@@ -321,10 +307,6 @@
                     <button id="btn-save-ticket" class="mt-3 bg-emerald-500 hover:bg-emerald-600 text-white py-3 px-8 rounded-full shadow-lg font-bold flex items-center gap-2 transform active:scale-95 transition w-full max-w-sm justify-center">
                         <i class="fa-solid fa-download"></i> บันทึกรูปบัตรคิว
                     </button>
-                    
-                    <div id="q-info" class="mt-4 text-gray-400 text-xs text-center">
-                        <i class="fa-solid fa-bell"></i> เปิดหน้านี้ค้างไว้เพื่อรับการแจ้งเตือน
-                    </div>
                 </div>
             `;
 
@@ -334,12 +316,9 @@
             canvas.width = 400; canvas.height = 400;
             const ctx = canvas.getContext('2d');
             const video = document.createElement('video');
-            video.muted = true;
-            video.playsInline = true;
+            video.muted = true; video.playsInline = true;
 
-            if (document.pictureInPictureEnabled) {
-                btnPip.classList.remove('hidden');
-            }
+            if (document.pictureInPictureEnabled) { btnPip.classList.remove('hidden'); }
 
             btnPip.onclick = async () => {
                 try {
@@ -349,35 +328,27 @@
                     await video.requestPictureInPicture();
                 } catch (e) {
                     alert("อุปกรณ์หรือเบราว์เซอร์ของคุณไม่รองรับฟีเจอร์หน้าต่างลอย");
-                    console.error(e);
                 }
             };
 
             const updatePiPWindow = (qNum, qAhead, status) => {
                 ctx.fillStyle = status === 'serving' ? '#10b981' : '#1e293b'; 
                 ctx.fillRect(0, 0, 400, 400);
-                ctx.fillStyle = 'white';
-                ctx.textAlign = 'center';
+                ctx.fillStyle = 'white'; ctx.textAlign = 'center';
                 ctx.font = '40px Sarabun';
                 ctx.fillText(status === 'serving' ? 'ถึงคิวของคุณแล้ว!' : 'คิวของคุณ', 200, 100);
                 ctx.font = 'bold 120px Sarabun';
                 ctx.fillText(qNum || '-', 200, 240);
-                
                 if (status === 'waiting') {
-                    ctx.font = '30px Sarabun';
-                    ctx.fillStyle = '#fbbf24';
+                    ctx.font = '30px Sarabun'; ctx.fillStyle = '#fbbf24';
                     ctx.fillText(`รออีก ${qAhead} คิว`, 200, 320);
                 }
             };
 
             btnSound.onclick = () => {
-                soundEnabled = true;
-                playBeep('normal');
-                vibrateDevice([100]);
-                
+                soundEnabled = true; playBeep('normal'); vibrateDevice([100]);
                 btnSound.className = "mb-4 bg-green-100 text-green-600 px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 shadow-sm";
                 btnSound.innerHTML = `<i class="fa-solid fa-volume-high"></i> เปิดการแจ้งเตือนแล้ว`;
-
                 if ("Notification" in window && Notification.permission !== "granted") {
                     Notification.requestPermission();
                 }
@@ -386,9 +357,7 @@
             document.getElementById('btn-save-ticket').onclick = () => {
                 html2canvas(document.getElementById('capture-area'), { scale: 2 }).then(canvas => {
                     const link = document.createElement('a');
-                    link.download = `Queue-Ticket.png`;
-                    link.href = canvas.toDataURL("image/png");
-                    link.click();
+                    link.download = `Queue-Ticket.png`; link.href = canvas.toDataURL("image/png"); link.click();
                 });
             };
 
@@ -410,28 +379,21 @@
                     badge.className = "absolute top-0 left-0 w-full h-4 bg-green-600 animate-pulse";
                     statusTxt.innerHTML = `เชิญช่อง <span class="text-3xl block mt-2 text-green-600">${myData.counter}</span>`;
                     document.getElementById('eta-box').style.display = 'none';
-
                     updatePiPWindow(myData.number, 0, 'serving');
 
                     if (soundEnabled && (!notifiedServe || myData.callTime !== lastUserCallTime)) {
-                        playBeep('alarm'); 
-                        vibrateDevice([500, 200, 500, 200, 500]); 
-
+                        playBeep('alarm'); vibrateDevice([500, 200, 500, 200, 500]); 
                         if ("Notification" in window && Notification.permission === "granted") {
                             navigator.serviceWorker.ready.then(function(registration) {
                                 registration.showNotification(`📢 ถึงคิวที่ ${myData.number} แล้ว!`, {
                                     body: `ขอเชิญรับบริการที่ช่องหมายเลข ${myData.counter} ครับ/ค่ะ`,
                                     icon: 'https://cdn-icons-png.flaticon.com/512/2550/2550212.png',
-                                    vibrate: [500, 200, 500],
-                                    requireInteraction: true 
+                                    vibrate: [500, 200, 500], requireInteraction: true 
                                 });
-                            }).catch(e => console.error("Notification fail", e));
+                            });
                         }
-
-                        notifiedServe = true;
-                        lastUserCallTime = myData.callTime; 
+                        notifiedServe = true; lastUserCallTime = myData.callTime; 
                     }
-
                 } else if (myData.status === 'waiting') {
                     bg.className = "min-h-screen flex flex-col items-center p-6 bg-gray-50";
                     badge.className = "absolute top-0 left-0 w-full h-2 bg-yellow-400";
@@ -442,28 +404,11 @@
                     Object.values(allData).forEach(q => { if (q.status === 'waiting' && q.timestamp < myData.timestamp) qAhead++; });
                     document.getElementById('q-ahead').innerText = qAhead;
                     document.getElementById('eta-time').innerText = Math.ceil((qAhead * AVG_SERVICE_TIME) / 3) || 1;
-
                     updatePiPWindow(myData.number, qAhead, 'waiting');
 
                     if (qAhead <= 2 && qAhead > 0 && soundEnabled && !notifiedNear) {
-                        playBeep('normal'); 
-                        vibrateDevice([200, 100, 200]);
-                        notifiedNear = true;
+                        playBeep('normal'); vibrateDevice([200, 100, 200]); notifiedNear = true;
                     }
-
-                    if (qAhead !== lastQAhead && lastQAhead !== -1 && document.visibilityState === 'hidden') {
-                        if ("Notification" in window && Notification.permission === "granted") {
-                            navigator.serviceWorker.ready.then(function(registration) {
-                                registration.showNotification(`คิวหมายเลข ${myData.number}`, {
-                                    body: `ตอนนี้เหลืออีก ${qAhead} คิวจะถึงคิวของคุณ`,
-                                    icon: 'https://cdn-icons-png.flaticon.com/512/2550/2550212.png',
-                                    tag: 'queue-update',
-                                    silent: true 
-                                });
-                            });
-                        }
-                    }
-                    lastQAhead = qAhead;
                 }
             });
         };
@@ -483,17 +428,12 @@
                 for (let i = 1; i <= 10; i++) {
                     const isActive = i === currentCounter;
                     const baseClasses = "flex-1 min-w-[60px] py-2 rounded-lg font-bold text-sm transition shadow-sm border flex flex-col items-center justify-center cursor-pointer";
-                    const activeClasses = isActive 
-                        ? "bg-blue-600 text-white border-blue-600 scale-105 shadow-md" 
-                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300";
-                    const shortcutKey = i === 10 ? '0' : i;
-                    
+                    const activeClasses = isActive ? "bg-blue-600 text-white border-blue-600 scale-105 shadow-md" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300";
                     html += `
                         <button class="counter-btn ${baseClasses} ${activeClasses}" data-counter="${i}">
                             <span class="text-base">ช่อง ${i}</span>
-                            <span class="text-[10px] font-mono mt-1 px-2 py-0.5 rounded bg-black/10">[${shortcutKey}]</span>
-                        </button>
-                    `;
+                            <span class="text-[10px] font-mono mt-1 px-2 py-0.5 rounded bg-black/10">[${i === 10 ? '0' : i}]</span>
+                        </button>`;
                 }
                 btnContainer.innerHTML = html;
 
@@ -514,9 +454,8 @@
                                 <h1 class="text-xl font-bold text-slate-700"><i class="fa-solid fa-user-tie"></i> Staff Console</h1>
                             </div>
                             <div>
-                                <p class="text-sm text-slate-500 mb-3 font-semibold"><i class="fa-solid fa-desktop"></i> เลือกช่องบริการ (หรือกดเลข 1-0 บนคีย์บอร์ด):</p>
-                                <div class="flex flex-wrap gap-2" id="counter-buttons">
-                                </div>
+                                <p class="text-sm text-slate-500 mb-3 font-semibold"><i class="fa-solid fa-desktop"></i> เลือกช่องบริการ:</p>
+                                <div class="flex flex-wrap gap-2" id="counter-buttons"></div>
                             </div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -549,7 +488,6 @@
                             </div>
                         </div>
                     </div>
-                    <div class="text-center mt-8"><button id="btn-reset" class="text-xs text-red-300 underline">Reset System</button></div>
                 </div>
             `;
             
@@ -590,42 +528,21 @@
                 const queues = Object.entries(snap.val() || {}).map(([k,v]) => ({id:k, ...v}));
                 const nextQ = queues.filter(q => q.status === 'waiting').sort((a,b) => a.timestamp - b.timestamp)[0];
                 if (nextQ) update(ref(db, `queues/${nextQ.id}`), { status: 'serving', counter: currentCounter, callTime: Date.now() });
-                else alert("ไม่มีคิวรอ");
             };
             
-            document.getElementById('btn-recall').onclick = () => { 
-                if (currentQID) {
-                    update(ref(db, `queues/${currentQID}`), { callTime: Date.now() }); 
-                } 
-            };
-            
+            document.getElementById('btn-recall').onclick = () => { if (currentQID) update(ref(db, `queues/${currentQID}`), { callTime: Date.now() }); };
             document.getElementById('btn-finish').onclick = () => { if (currentQID) update(ref(db, `queues/${currentQID}`), { status: 'done' }); };
-            document.getElementById('btn-reset').onclick = () => { if(confirm('ลบข้อมูลทั้งหมด?')) set(ref(db, 'queues'), null); }
             
             onValue(ref(db, 'queues'), (snap) => updateUI(snap.val()));
-
-            window.addEventListener('keydown', (e) => {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-                const keyMap = {
-                    '1': 1, '2': 2, '3': 3, '4': 4, '5': 5,
-                    '6': 6, '7': 7, '8': 8, '9': 9, '0': 10
-                };
-
-                if (keyMap[e.key]) {
-                    currentCounter = keyMap[e.key];
-                    renderCounterButtons(); 
-                    get(ref(db, 'queues')).then(snap => updateUI(snap.val()));
-                }
-            });
         };
 
         // ==========================================
-        // 4. TV DISPLAY MODE (ระบบ AI ตรวจหาการชูสองนิ้ว ✌️)
+        // 4. TV DISPLAY MODE (อัปเดตระบบ AI โชว์เส้นมือ + นับถอยหลัง 3 วิ + QR 45 วิ)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
             let resetTimer = null;
+            let qrCountdownTimer = null; // ตัวแปรสำหรับจับเวลานับถอยหลังของ QR
             let currentlyShowingQID = null; 
 
             container.innerHTML = `
@@ -648,18 +565,21 @@
                             <ul id="tv-waiting-list" class="mb-6"></ul>
                         </div>
                         
-                        <div class="mb-4 flex flex-col flex-1 justify-center">
+                        <div class="mb-4 flex flex-col flex-1 justify-center relative">
                             <p class="text-xs text-slate-500 mb-2 font-semibold flex items-center gap-1.5">
                                 <i class="fa-solid fa-video text-emerald-500 animate-pulse"></i> Live AI Camera Feed
                             </p>
-                            <div class="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video w-full shadow-inner flex items-center justify-center">
-                                <video id="tv-webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                            
+                            <div class="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video w-full shadow-inner">
+                                <video id="tv-webcam" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
+                                <canvas id="tv-canvas" class="absolute inset-0 w-full h-full object-cover z-10"></canvas>
                                 
-                                <div id="gesture-feedback" class="hidden absolute bottom-2 left-2 right-2 bg-emerald-600/95 text-white text-xs font-bold py-2 px-3 rounded-lg text-center animate-pulse z-10 shadow-lg">
-                                    ✌️ ตรวจพบท่าชูสองนิ้ว! กำลังออกคิวใหม่...
+                                <div id="gesture-countdown" class="hidden absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-20 backdrop-blur-sm">
+                                    <span class="text-[8rem] font-black text-amber-400 leading-none drop-shadow-2xl" id="countdown-number">3</span>
+                                    <span class="text-white text-lg font-bold mt-2 animate-pulse">ค้างไว้...</span>
                                 </div>
 
-                                <div id="webcam-error" class="hidden absolute inset-0 bg-slate-950 p-4 text-center flex flex-col items-center justify-center text-xs text-red-400">
+                                <div id="webcam-error" class="hidden absolute inset-0 bg-slate-950 p-4 text-center flex flex-col items-center justify-center text-xs text-red-400 z-30">
                                     <i class="fa-solid fa-camera-rotable text-2xl mb-2 text-slate-600"></i>
                                     ไม่สามารถเข้าถึงกล้องเว็บแคมได้
                                 </div>
@@ -671,10 +591,10 @@
                                 <i class="fa-solid fa-hand-peace text-5xl text-slate-500 mb-4 animate-bounce"></i>
                                 <h3 class="text-xl font-bold text-slate-300 mb-2">รับบัตรคิว</h3>
                                 <p class="text-slate-500 text-sm mb-1">
-                                    ชูสองนิ้ว ✌️ ให้กล้องเพื่อรับคิว
+                                    ชูสองนิ้ว ✌️ <span class="text-amber-400">ค้างไว้ 3 วิ</span>
                                 </p>
                                 <p class="text-slate-600 text-[11px]">
-                                    หรือกดคีย์ลัด <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-400 font-mono text-[10px]">Alt+Shift+Q</kbd>
+                                    หรือกด <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-400 font-mono text-[10px]">Alt+Shift+Q</kbd>
                                 </p>
                             </div>
                             <div id="tv-kiosk-result" class="hidden flex-col items-center justify-center text-center w-full animate-fade-in">
@@ -686,98 +606,127 @@
                                 <p class="text-xs font-bold text-slate-300">
                                     <i class="fa-solid fa-mobile-screen-button text-emerald-500"></i> สแกนรับตั๋วเข้ามือถือ
                                 </p>
-                                <p class="text-[10px] text-slate-500 mt-1">(หน้าต่างนี้จะปิดอัตโนมัติ)</p>
+                                <p class="text-[11px] text-slate-500 mt-2">(ปิดอัตโนมัติใน <span id="qr-countdown-text" class="text-amber-500 font-bold">45</span> วิ)</p>
                             </div>
                         </div>
                     </div>
                 </div>
             `;
             
-            // เปิดกล้องและประมวลผลด้วยโมเดล AI MediaPipe
             const startWebcamWithAI = async () => {
                 const videoEl = document.getElementById('tv-webcam');
+                const canvasEl = document.getElementById('tv-canvas');
+                const canvasCtx = canvasEl.getContext('2d');
+                
                 const errorEl = document.getElementById('webcam-error');
-                const feedbackEl = document.getElementById('gesture-feedback');
+                const countdownOverlay = document.getElementById('gesture-countdown');
+                const countdownNumber = document.getElementById('countdown-number');
 
-                if (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
-                    console.error("MediaPipe libraries not loaded correctly.");
-                    if(errorEl) {
-                        errorEl.classList.remove('hidden');
-                        errorEl.innerText = "กำลังดาวน์โหลดระบบตรวจจับพิกัดมือ...";
-                    }
+                if (typeof Hands === 'undefined' || typeof Camera === 'undefined' || typeof drawConnectors === 'undefined') {
+                    if(errorEl) { errorEl.classList.remove('hidden'); errorEl.innerText = "กำลังดาวน์โหลดระบบ AI..."; }
                     return;
                 }
 
                 try {
-                    const hands = new Hands({
-                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-                    });
+                    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
 
                     hands.setOptions({
-                        maxNumHands: 1, // ตรวจจับครั้งละ 1 มือเพื่อประสิทธิภาพความเร็วสูงสุด
+                        maxNumHands: 1,
                         modelComplexity: 1,
                         minDetectionConfidence: 0.75,
                         minTrackingConfidence: 0.75
                     });
 
                     let gestureCooldown = false;
+                    let gestureStartTime = 0; 
+                    const HOLD_DURATION = 3000; // กำหนดเวลาให้ค้างไว้ 3 วินาทีตามบรีฟ
 
                     hands.onResults((results) => {
+                        // ปรับขนาด Canvas ให้พอดีกับวิดีโอเพื่อวาดเส้น
+                        canvasEl.width = videoEl.videoWidth;
+                        canvasEl.height = videoEl.videoHeight;
+                        canvasCtx.save();
+                        canvasCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
                         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                            
+                            // 1. วาดเส้นและจุดบนมือ (Landmarks Feedback)
+                            for (const landmarks of results.multiHandLandmarks) {
+                                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#10b981', lineWidth: 4});
+                                drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 2, radius: 4});
+                            }
+
+                            // 2. หยุดตรวจจับท่าทางมือหากหน้าต่าง QR Code เด้งอยู่ (ตามบรีฟข้อ 4)
+                            if (currentlyShowingQID) {
+                                canvasCtx.restore();
+                                return; 
+                            }
+
                             const landmarks = results.multiHandLandmarks[0];
 
-                            // [ อัลกอริทึมตรวจสอบการชูสองนิ้ว - ✌️ Peace Sign ]
-                            // ในระบบพิกัด MediaPipe ค่าแกน Y: 0 อยู่ขอบบน และ 1 อยู่ขอบล่าง (ค่าน้อยกว่าคืออยู่ตำแหน่งสูงกว่า)
-                            
-                            // 1. นิ้วชี้เหยียดตรง (ปลายนิ้ว 8 อยู่สูงกว่าข้อต่อส่วนกลาง 6)
+                            // เช็คการทำมือ 2 นิ้ว ✌️
                             const isIndexUp = landmarks[8].y < landmarks[6].y;
-                            
-                            // 2. นิ้วกลางเหยียดตรง (ปลายนิ้ว 12 อยู่สูงกว่าข้อต่อส่วนกลาง 10)
                             const isMiddleUp = landmarks[12].y < landmarks[10].y;
-                            
-                            // 3. นิ้วนางต้องพับลงมา (ปลายนิ้ว 16 อยู่ต่ำกว่าข้อต่อส่วนกลาง 14)
                             const isRingFolded = landmarks[16].y > landmarks[14].y;
-                            
-                            // 4. นิ้วก้อยต้องพับลงมา (ปลายนิ้ว 20 อยู่ต่ำกว่าข้อต่อส่วนกลาง 18)
                             const isPinkyFolded = landmarks[20].y > landmarks[18].y;
 
-                            // หากตรงเงื่อนไข ชูสองนิ้ว ครบถ้วน
                             if (isIndexUp && isMiddleUp && isRingFolded && isPinkyFolded) {
                                 if (!gestureCooldown && !isGenerating) {
-                                    gestureCooldown = true;
                                     
-                                    // แสดงสถานะสีเขียวบนจอภาพเว็บแคม
-                                    if (feedbackEl) feedbackEl.classList.remove('hidden');
-
-                                    // สร้างคิวใหม่ลงฐานข้อมูล
-                                    createNewQueue();
-
-                                    // ตั้งคูลดาวน์ป้องกันการออกคิวรัวๆ เป็นเวลา 3 วินาที
-                                    setTimeout(() => {
-                                        gestureCooldown = false;
-                                        if (feedbackEl) feedbackEl.classList.add('hidden');
-                                    }, 3000);
+                                    // หากเพิ่งเริ่มชู 2 นิ้วเป็นครั้งแรก
+                                    if (gestureStartTime === 0) {
+                                        gestureStartTime = Date.now();
+                                        if(countdownOverlay) countdownOverlay.classList.remove('hidden');
+                                        if(countdownNumber) countdownNumber.innerText = "3";
+                                    } 
+                                    else {
+                                        const elapsed = Date.now() - gestureStartTime;
+                                        const timeLeft = Math.ceil((HOLD_DURATION - elapsed) / 1000); // แปลงเป็น 3, 2, 1
+                                        
+                                        // หากชูค้างไว้จนครบเวลาที่กำหนดแล้ว (3 วินาที)
+                                        if (elapsed >= HOLD_DURATION) {
+                                            gestureCooldown = true;
+                                            gestureStartTime = 0; // รีเซ็ต
+                                            
+                                            if(countdownOverlay) countdownOverlay.classList.add('hidden');
+                                            createNewQueue(); // สั่งสร้างคิว
+                                            
+                                            // ป้องกันการออกคิวรัวๆ หลังเสร็จสิ้น
+                                            setTimeout(() => { gestureCooldown = false; }, 5000);
+                                        } else {
+                                            // อัปเดตตัวเลข 3.. 2.. 1.. กลางจอ
+                                            if(countdownNumber) countdownNumber.innerText = timeLeft.toString();
+                                        }
+                                    }
+                                }
+                            } else {
+                                // ถ้าทำท่าผิด หรือเอามือลง ให้รีเซ็ตเวลาการนับทันที
+                                if (gestureStartTime !== 0 && !gestureCooldown) {
+                                    gestureStartTime = 0;
+                                    if(countdownOverlay) countdownOverlay.classList.add('hidden');
                                 }
                             }
+                        } else {
+                            // ถ้ามือหลุดออกจากกล้อง รีเซ็ต
+                            if (gestureStartTime !== 0 && !gestureCooldown) {
+                                gestureStartTime = 0;
+                                if(countdownOverlay) countdownOverlay.classList.add('hidden');
+                            }
                         }
+                        canvasCtx.restore();
                     });
 
                     const camera = new Camera(videoEl, {
-                        onFrame: async () => {
-                            await hands.send({image: videoEl});
-                        },
-                        width: 640,
-                        height: 480
+                        onFrame: async () => { await hands.send({image: videoEl}); },
+                        width: 640, height: 480
                     });
                     camera.start();
 
                 } catch (err) {
-                    console.error("Webcam AI setup failed:", err);
                     if (errorEl) errorEl.classList.remove('hidden');
                 }
             };
 
-            // เรียกเปิดใช้งานกล้อง AI
             startWebcamWithAI();
 
             document.getElementById('sound-overlay').onclick = function() {
@@ -793,6 +742,8 @@
                 if(idleBox) { idleBox.classList.remove('hidden'); idleBox.classList.add('flex'); }
                 
                 if (resetTimer) clearTimeout(resetTimer);
+                if (qrCountdownTimer) clearInterval(qrCountdownTimer); // เคลียร์ตัวนับเวลา 45 วิ
+                
                 currentlyShowingQID = null;
             };
 
@@ -824,8 +775,23 @@
                     if(qrCanvas) qrCanvas.classList.add('mx-auto');
                 }, 50);
 
+                // เริ่มกระบวนการจับเวลาแสดง QR 45 วินาที
                 if (resetTimer) clearTimeout(resetTimer);
-                resetTimer = setTimeout(() => { resetTvKioskUI(); }, 30000); 
+                if (qrCountdownTimer) clearInterval(qrCountdownTimer);
+                
+                let timeLeft = 45;
+                const timerSpan = document.getElementById('qr-countdown-text');
+                if (timerSpan) timerSpan.innerText = timeLeft;
+
+                qrCountdownTimer = setInterval(() => {
+                    timeLeft--;
+                    if (timerSpan) timerSpan.innerText = timeLeft;
+                    if (timeLeft <= 0) {
+                        clearInterval(qrCountdownTimer);
+                    }
+                }, 1000);
+
+                resetTimer = setTimeout(() => { resetTvKioskUI(); }, 45000); // ปิดเมื่อครบ 45 วิ
             };
 
             const speak = (text) => {
@@ -850,7 +816,8 @@
                     const newest = waitingQueues[0];
                     const age = Date.now() - newest.timestamp;
                     
-                    if (age < 30000 && newest.scanned === false) {
+                    // ปรับเงื่อนไขการดึง QR โชว์ให้รองรับ 45 วินาที (45000 ms)
+                    if (age < 45000 && newest.scanned === false) {
                         showKioskQR(newest.id, newest.number);
                     } else {
                         if (currentlyShowingQID) resetTvKioskUI();
