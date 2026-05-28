@@ -621,7 +621,7 @@
         };
 
         // ==========================================
-        // 4. TV DISPLAY MODE (รวมระบบ AI ตรวจหาการยกนิ้วโป้ง 👍)
+        // 4. TV DISPLAY MODE (รวมระบบ AI ตรวจหาการชูนิ้วชี้ ☝️)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
@@ -656,7 +656,7 @@
                                 <video id="tv-webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
                                 
                                 <div id="gesture-feedback" class="hidden absolute bottom-2 left-2 right-2 bg-emerald-600/95 text-white text-xs font-bold py-2 px-3 rounded-lg text-center animate-pulse z-10 shadow-lg">
-                                    👍 ตรวจพบท่ายกนิ้วโป้ง! กำลังออกคิวใหม่...
+                                    ☝️ ตรวจพบท่าชูนิ้วชี้! กำลังออกคิวใหม่...
                                 </div>
 
                                 <div id="webcam-error" class="hidden absolute inset-0 bg-slate-950 p-4 text-center flex flex-col items-center justify-center text-xs text-red-400">
@@ -671,7 +671,7 @@
                                 <i class="fa-solid fa-hand-pointer text-5xl text-slate-500 mb-4 animate-bounce"></i>
                                 <h3 class="text-xl font-bold text-slate-300 mb-2">รับบัตรคิว</h3>
                                 <p class="text-slate-500 text-sm mb-1">
-                                    ยกนิ้วโป้ง 👍 ให้กล้องเพื่อรับคิว
+                                    ชูนิ้วชี้ ☝️ ให้กล้องเพื่อรับคิว
                                 </p>
                                 <p class="text-slate-600 text-[11px]">
                                     หรือกดคีย์ลัด <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-400 font-mono text-[10px]">Alt+Shift+Q</kbd>
@@ -726,18 +726,21 @@
                         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                             const landmarks = results.multiHandLandmarks[0];
 
-                            // [ algorithm ตรวจสอบการทำมือยกนิ้วโป้ง - Thumbs Up ]
-                            // ในพิกัด MediaPipe ค่า Y: 0 คือบนสุด และ 1 คือล่างสุด
-                            // ยกนิ้วโป้ง = ปลายเล็บนิ้วโป้ง (4) ต้องมีค่า Y น้อยกว่าข้อต่อ (3) และ (2) (แปลว่าชี้ขึ้นฟ้า)
-                            const isThumbUp = landmarks[4].y < landmarks[3].y && landmarks[3].y < landmarks[2].y;
+                            // [ algorithm ตรวจสอบการทำมือชูนิ้วชี้ - Pointing Index Up ]
+                            // ในพิกัด MediaPipe ค่า Y: 0 คือบนสุด และ 1 คือล่างสุด (ค่าน้อยคืออยู่สูง)
 
-                            // นิ้วอื่นอีก 4 นิ้วต้องพับเก็บ (ปลายเล็บอยู่ต่ำกว่าข้อต่อ PIP เสมอ เช่น จุดที่ 8 อยู่ล่างจุดที่ 6)
-                            const isIndexFolded = landmarks[8].y > landmarks[6].y;
+                            // นิ้วชี้เหยียดตรงชี้ขึ้นฟ้า
+                            const isIndexPointingUp = landmarks[8].y < landmarks[7].y && landmarks[7].y < landmarks[6].y;
+
+                            // นิ้วโป้งพับเก็บ
+                            const isThumbFolded = landmarks[4].y > landmarks[3].y;
+
+                            // นิ้วอื่นอีก 3 นิ้ว (กลาง, นาง, ก้อย) ต้องพับเก็บ (ปลายเล็บอยู่ต่ำกว่าข้อต่อ PIP - ค่ายิ่งมากยิ่งต่ำ)
                             const isMiddleFolded = landmarks[12].y > landmarks[10].y;
                             const isRingFolded = landmarks[16].y > landmarks[14].y;
                             const isPinkyFolded = landmarks[20].y > landmarks[18].y;
 
-                            if (isThumbUp && isIndexFolded && isMiddleFolded && isRingFolded && isPinkyFolded) {
+                            if (isIndexPointingUp && isThumbFolded && isMiddleFolded && isRingFolded && isPinkyFolded) {
                                 if (!gestureCooldown && !isGenerating) {
                                     gestureCooldown = true;
                                     
