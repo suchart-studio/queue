@@ -37,7 +37,7 @@
             border-radius: 50% / 45%;
             pointer-events: none;
             z-index: 15;
-            box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.5); /* ม่านบังแสงรอบกรอบโฟกัส */
+            box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.5);
             transition: border-color 0.3s ease;
         }
     </style>
@@ -68,7 +68,7 @@
         const db = getDatabase(app);
 
         const params = new URLSearchParams(window.location.search);
-        const mode = params.get('mode') || 'tv'; // ค่าเริ่มต้นคือหน้าจอ TV
+        const mode = params.get('mode') || 'tv';
 
         // --------------------------------------------------------
         // ระบบเสียงแจ้งเตือนสากล (Beep & TTS)
@@ -240,6 +240,7 @@
             onValue(ref(db, 'queues'), (snap) => updateUI(snap.val()));
 
             window.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
                 const keyMap = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '0': 10 };
                 if (keyMap[e.key]) {
                     currentCounter = keyMap[e.key];
@@ -254,11 +255,11 @@
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
-            let cameraState = 'WAITING_FOR_FACE'; // WAITING_FOR_FACE, HOLDING_FACE, COUNTDOWN, SHOWING_TICKET
+            let cameraState = 'WAITING_FOR_FACE'; 
             let faceDetectedStartTime = 0;
             let countdownInterval = null;
             let ticketTimer = null;
-            let lastFaceBox = null; // เก็บพิกัดใบหน้าล่าสุดเพื่อนำไปครอปซูมหัว
+            let lastFaceBox = null; 
 
             container.innerHTML = `
                 <div class="relative w-screen h-screen bg-slate-900 text-white overflow-hidden flex select-none">
@@ -292,30 +293,35 @@
                                 <div class="inline-block bg-black/70 backdrop-blur-sm px-5 py-2.5 rounded-xl text-white border border-slate-600 shadow-xl">
                                     <i class="fa-solid fa-eye text-2xl text-emerald-400 mb-1 block animate-pulse"></i>
                                     <span class="font-bold text-sm block">กรุณายืนมองกล้อง</span>
-                                    <span class="text-xs text-slate-300">จัดใบหน้าให้อยู่ภายในกรอบประ</span>
+                                    <span class="text-xs text-slate-300">เข้าใกล้และขยับหน้าให้อยู่ในกรอบ</span>
                                 </div>
                             </div>
 
                             <div id="ui-holding" class="hidden absolute inset-0 bg-amber-500/20 flex flex-col items-center justify-center z-30 backdrop-blur-[2px] transition-all">
-                                <span class="text-2xl font-bold text-amber-400 bg-black/70 px-4 py-2 rounded-xl border border-amber-500/50 shadow-xl">
-                                    <i class="fa-solid fa-spinner animate-spin mr-2"></i> กำลังตรวจจับ... นิ่งไว้ค้างไว้ 2 วิ
+                                <span class="text-2xl font-bold text-amber-400 bg-black/80 px-5 py-3 rounded-xl border border-amber-500/50 shadow-xl">
+                                    <i class="fa-solid fa-spinner animate-spin mr-2"></i> กรุณายืนนิ่งๆ 2 วินาที
                                 </span>
                             </div>
 
-                            <div id="ui-countdown" class="hidden absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-40 backdrop-blur-sm">
+                            <div id="ui-countdown" class="hidden absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-40 backdrop-blur-sm">
                                 <span class="text-[9rem] font-black text-emerald-400 leading-none drop-shadow-2xl" id="capture-number">5</span>
-                                <span class="text-white text-xl font-bold mt-2 animate-bounce bg-black/40 px-4 py-1 rounded-full"><i class="fa-solid fa-camera mr-1"></i> เตรียมถ่ายภาพใบหน้าของคุณ!</span>
+                                <span class="text-white text-xl font-bold mt-2 animate-bounce bg-black/40 px-4 py-1 rounded-full"><i class="fa-solid fa-camera mr-1"></i> เตรียมถ่ายภาพ!</span>
                             </div>
 
                             <div id="ui-ticket" class="hidden absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
                                 <h3 class="text-slate-400 font-bold mb-1 uppercase tracking-widest text-xs">หมายเลขคิวของคุณคือ</h3>
                                 <div id="ticket-q-number" class="text-[5.5rem] font-black text-emerald-400 leading-none mb-3 tracking-tighter drop-shadow-md">A000</div>
                                 
-                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800">
+                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800 flex-shrink-0">
                                     <img id="ticket-face-img" src="" class="w-full h-full object-cover">
                                 </div>
                                 <p class="text-amber-400 font-bold text-lg"><i class="fa-solid fa-volume-high animate-pulse"></i> กรุณาจำหมายเลขคิวของคุณไว้ค่ะ</p>
                                 <p class="text-slate-500 text-[11px] mt-3">(ระบบจะเริ่มใหม่ในอีก <span id="ticket-close-sec" class="font-bold text-slate-300">10</span> วินาที)</p>
+                            </div>
+
+                            <div id="webcam-loading" class="absolute inset-0 bg-slate-900 p-4 text-center flex flex-col items-center justify-center text-sm text-slate-400 z-50">
+                                <i class="fa-solid fa-spinner animate-spin text-3xl mb-3 text-emerald-500"></i>
+                                กำลังเปิดใช้งานกล้อง AI...
                             </div>
                         </div>
 
@@ -327,7 +333,6 @@
                 </div>
             `;
             
-            // ฟังก์ชันซูมครอปเฉพาะส่วนหัวและใบหน้าอ้างอิงตามพิกัดที่ AI ตรวจจับได้จริง
             const captureFaceImage = (videoEl) => {
                 const canvas = document.createElement('canvas');
                 const size = 320; 
@@ -341,39 +346,33 @@
                 let sx, sy, sWidth, sHeight;
 
                 if (lastFaceBox) {
-                    // แปลงพิกัดสัดส่วนเปอร์เซ็นต์ (0-1) ให้เป็นหน่วยพิกเซลจริงของตัวกล้อง
                     const fX = lastFaceBox.xMin * vw;
                     const fY = lastFaceBox.yMin * vh;
                     const fW = lastFaceBox.width * vw;
                     const fH = lastFaceBox.height * vh;
 
-                    // ปรับรัศมีการขยายกรอบครอป (Padding) รอบใบหน้าเพื่อให้ได้ส่วนหัวที่สวยงาม ไม่ขาดช่วงทรงผม
                     const padX = fW * 0.45;
                     const padY = fH * 0.6;
 
                     sx = Math.max(0, fX - padX);
-                    sy = Math.max(0, fY - padY * 1.2); // เผื่อขอบด้านบนขึ้นไปถึงเส้นผม
+                    sy = Math.max(0, fY - padY * 1.2); 
                     sWidth = Math.min(vw - sx, fW + padX * 2);
                     sHeight = Math.min(vh - sy, fH + padY * 2.5);
 
-                    // ทำกรอบภาพให้เป็น 1:1 จัตุรัสเสมอ
                     const finalDim = Math.max(sWidth, sHeight);
                     sWidth = finalDim; sHeight = finalDim;
                 } else {
-                    // แผนสำรองกรณีหาพิกัดไม่เจอ ให้ตัดภาพกึ่งกลางสัดส่วนตรงกรอบพอดี
                     sWidth = Math.min(vw, vh) * 0.6; sHeight = sWidth;
                     sx = (vw - sWidth) / 2; sy = vh * 0.15;
                 }
                 
-                // สลับฝั่งด้านซ้าย-ขวา เพื่อให้รูปภาพที่เก็บได้ไม่กลับฝั่งหลอกตาผู้ใช้งาน
                 ctx.translate(size, 0);
                 ctx.scale(-1, 1);
                 ctx.drawImage(videoEl, sx, sy, sWidth, sHeight, 0, 0, size, size);
                 
-                return canvas.toDataURL('image/jpeg', 0.65); // บีบอัดไฟล์ 65% ส่งเข้าฐานข้อมูลขนาดเบาตัว
+                return canvas.toDataURL('image/jpeg', 0.65); 
             };
 
-            // รันการทำงานระดมกล้องเว็บแคมเข้าสู่ระบบ MediaPipe AI Face Detection
             const startWebcamWithAI = async () => {
                 const videoEl = document.getElementById('tv-webcam');
                 const canvasEl = document.getElementById('tv-canvas');
@@ -381,11 +380,11 @@
                 
                 const uiInstruction = document.getElementById('ui-instruction');
                 const uiHolding = document.getElementById('ui-holding');
-                const uiCountdown = document.getElementById('ui-countdown');
                 const faceGuide = document.getElementById('face-guide-overlay');
+                const webcamLoading = document.getElementById('webcam-loading');
 
                 if (typeof FaceDetection === 'undefined' || typeof Camera === 'undefined') {
-                    console.error("ไลบรารี MediaPipe Face ตรวจจับใบหน้าไม่สมบูรณ์");
+                    if (webcamLoading) webcamLoading.innerHTML = "ไลบรารี AI ขัดข้อง กรุณารีเฟรชหน้าจอ";
                     return;
                 }
 
@@ -394,18 +393,22 @@
                         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
                     });
 
-                    faceDetection.setOptions({ model: 'short', minDetectionConfidence: 0.6 });
+                    // ใช้โมเดล 0 (สำหรับระยะใกล้) และลดความแม่นยำลงมาที่ 0.5 เพื่อให้เจอหน้าง่ายขึ้น
+                    faceDetection.setOptions({ modelSelection: 0, minDetectionConfidence: 0.5 });
 
                     faceDetection.onResults((results) => {
+                        // ปิดหน้าจอโหลดเมื่อกล้องเริ่มทำงาน
+                        if (webcamLoading && !webcamLoading.classList.contains('hidden')) {
+                            webcamLoading.classList.add('hidden');
+                        }
+
                         canvasEl.width = videoEl.videoWidth;
                         canvasEl.height = videoEl.videoHeight;
                         canvasCtx.save();
                         canvasCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
                         
-                        // วาดภาพสตรีมกล้องสดลงไปบนผิว Canvas
                         canvasCtx.drawImage(results.image, 0, 0, canvasEl.width, canvasEl.height);
 
-                        // ถ้าอยู่ในกระบวนการล็อกตั๋วคิว/หรือถ่ายรูปเสร็จแล้ว จะหยุดการประมวลผลตำแหน่งซ้ำซ้อนชั่วคราว
                         if (cameraState === 'SHOWING_TICKET' || cameraState === 'COUNTDOWN') {
                             canvasCtx.restore(); return; 
                         }
@@ -414,28 +417,34 @@
                             const detection = results.detections[0];
                             lastFaceBox = detection.boundingBox;
 
-                            // คำนวณจุดกึ่งกลางของพิกัดใบหน้า (Normalized 0 - 1)
-                            const xCenter = lastFaceBox.xMin + (lastFaceBox.width / 2);
-                            const yCenter = lastFaceBox.yMin + (lastFaceBox.height / 2);
+                            // [เสริมการรับรู้] วาดกรอบสี่เหลี่ยมสีเขียวครอบหน้า เพื่อให้รู้ว่ากล้องจับได้แล้ว
+                            canvasCtx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
+                            canvasCtx.lineWidth = 4;
+                            canvasCtx.strokeRect(
+                                lastFaceBox.xMin * canvasEl.width, 
+                                lastFaceBox.yMin * canvasEl.height, 
+                                lastFaceBox.width * canvasEl.width, 
+                                lastFaceBox.height * canvasEl.height
+                            );
 
-                            // กรองเช็คว่า ใบหน้าตรงอยู่กึ่งกลางช่วงกรอบวงรีประที่ตั้งไว้หรือไม่
-                            const isFaceInZone = (xCenter > 0.35 && xCenter < 0.65 && yCenter > 0.15 && yCenter < 0.65 && lastFaceBox.width > 0.12);
+                            // เงื่อนไขใหม่: แค่ใบหน้ามีขนาดใหญ่กว่า 15% ของความกว้างกล้องก็ถือว่าเข้าโซนแล้ว
+                            const isFaceLargeEnough = lastFaceBox.width > 0.15;
 
-                            if (cameraState === 'WAITING_FOR_FACE' || cameraState === 'HOLDING_FACE') {
-                                if (isFaceInZone) {
-                                    if (cameraState === 'WAITING_FOR_FACE') {
-                                        cameraState = 'HOLDING_FACE';
-                                        faceDetectedStartTime = Date.now();
-                                        
-                                        uiInstruction.classList.add('hidden');
-                                        uiHolding.classList.remove('hidden');
-                                        faceGuide.style.borderColor = '#fbbf24'; // เปลี่ยนเส้นกรอบเป็นสีเหลืองเพื่อบอกให้ผู้ใช้รู้ตัว
-                                    } else if (cameraState === 'HOLDING_FACE') {
-                                        const totalElapsed = Date.now() - faceDetectedStartTime;
-                                        // ถ้านิ่งแช่ครบ 2 วินาที (2000 มิลลิวินาที) ให้ก้าวไปสู่ขั้นนับถอยหลัง
-                                        if (totalElapsed >= 2000) {
-                                            startCaptureCountdown(videoEl);
-                                        }
+                            if (cameraState === 'WAITING_FOR_FACE') {
+                                if (isFaceLargeEnough) {
+                                    cameraState = 'HOLDING_FACE';
+                                    faceDetectedStartTime = Date.now();
+                                    
+                                    uiInstruction.classList.add('hidden');
+                                    uiHolding.classList.remove('hidden');
+                                    faceGuide.style.borderColor = '#fbbf24'; 
+                                }
+                            } else if (cameraState === 'HOLDING_FACE') {
+                                if (isFaceLargeEnough) {
+                                    const totalElapsed = Date.now() - faceDetectedStartTime;
+                                    // นับค้าง 2 วิ
+                                    if (totalElapsed >= 2000) {
+                                        startCaptureCountdown(videoEl);
                                     }
                                 } else {
                                     resetToWaiting();
@@ -453,20 +462,19 @@
                     });
                     camera.start();
 
-                } catch (err) { console.error("ไม่สามารถเริ่มตรวจจับกล้องใบหน้าได้", err); }
+                } catch (err) { console.error(err); }
             };
 
-            // ระบบนับถอยหลัง 5 วินาทีก่อนลั่นชัตเตอร์กล้องถ่ายสแนปช็อต
             const startCaptureCountdown = (videoEl) => {
                 cameraState = 'COUNTDOWN';
                 let currentSec = 5;
                 
                 document.getElementById('ui-holding').classList.add('hidden');
                 document.getElementById('ui-countdown').classList.remove('hidden');
-                document.getElementById('face-guide-overlay').style.borderColor = '#10b981'; // เปล่งกรอบแสงสีเขียว
+                document.getElementById('face-guide-overlay').style.borderColor = '#10b981'; 
                 document.getElementById('capture-number').innerText = currentSec;
                 
-                speak("ตรวจพบใบหน้าเรียบร้อยค่ะ เตรียมถ่ายภาพในอีก 5 วินาที");
+                speak("เตรียมถ่ายภาพในอีก 5 วินาที");
 
                 countdownInterval = setInterval(async () => {
                     currentSec--;
@@ -476,16 +484,13 @@
                     } else {
                         clearInterval(countdownInterval);
                         
-                        // เอฟเฟกต์แสงแฟลชสีขาวจำลองการกดถ่ายภาพชัตเตอร์
                         const flashEl = document.createElement('div');
                         flashEl.className = "absolute inset-0 bg-white z-50 animate-pulse";
                         document.getElementById('ui-countdown').appendChild(flashEl);
                         playBeep('snap');
                         
-                        // ถ่ายภาพครอปใบหน้าซูมส่วนหัว
                         const base64Photo = captureFaceImage(videoEl);
                         
-                        // อัปโหลดข้อมูลคิวใหม่ขึ้นสู่ระบบ Firebase Realtime Database
                         const queueRef = push(ref(db, 'queues'));
                         const generatedQNumber = "A" + Math.floor(100 + Math.random() * 900);
                         
@@ -504,7 +509,6 @@
                 }, 1000);
             };
 
-            // ระบบแสดงผลลัพธ์ข้อมูลคิวทับหน้าจอกล้องไว้เป็นเวลา 10 วินาที
             const showTicketScreen = (qNumber, faceImgBase64) => {
                 cameraState = 'SHOWING_TICKET';
                 
@@ -532,7 +536,6 @@
                 }, 1000);
             };
 
-            // ฟังก์ชันรีเซ็ตค่าระบบกล้องให้พร้อมต้อนรับคนถัดไปทันที
             const resetToWaiting = (fullClean = false) => {
                 if (!fullClean && (cameraState === 'COUNTDOWN' || cameraState === 'SHOWING_TICKET')) return;
                 
@@ -555,33 +558,29 @@
                 }
             };
 
-            // สตาร์ทระบบกล้องร่วม AI
             startWebcamWithAI();
             
             document.getElementById('sound-overlay').onclick = function() {
                 this.remove(); playBeep('normal');
             };
 
-            // เฝ้าติดตามการทำรายการบนฐานข้อมูลเพื่อผลักหน้าคิวใน Now Serving และ Next
             onValue(ref(db, 'queues'), (snapshot) => {
                 const data = snapshot.val() || {};
                 const queues = Object.entries(data).map(([id, val]) => ({id, ...val}));
                 
-                // 1. นำข้อมูลมาประกาศเรียกออกเสียงลำโพงเมื่อเจ้าหน้าที่กดเรียก
                 const serving = queues.filter(q => q.status === 'serving').sort((a,b) => b.callTime - a.callTime);
                 if (serving.length > 0) {
                     const currentServingQ = serving[0];
                     const uniqueKey = currentServingQ.number + currentServingQ.callTime;
                     if (lastAnnounce !== uniqueKey) {
                         lastAnnounce = uniqueKey;
-                        playBeep('normal'); 
+                        playBeep('alarm'); 
                         setTimeout(() => { 
                             speak(`ขอเชิญหมายเลขคิว, ${currentServingQ.number}, ที่ช่องบริการหมายเลข, ${currentServingQ.counter} ค่ะ`); 
                         }, 500);
                     }
                 }
                 
-                // อัปเดตรายการ NOW SERVING บนหน้าจอฝั่งซ้ายพร้อมรูปหน้าผู้รับบริการขนาดใหญ่ชัดเจน
                 document.getElementById('tv-serving-list').innerHTML = serving.slice(0, 4).map((q, idx) => {
                     const isNewestCall = idx === 0; 
                     return `
@@ -606,7 +605,6 @@
                     </div>`;
                 }).join('');
                 
-                // 2. จัดการข้อมูลคิวรอรับบริการถัดไป (NEXT) จำนวน 3 ลำดับ
                 const waiting = queues.filter(q => q.status === 'waiting').sort((a,b) => a.timestamp - b.timestamp).slice(0, 3);
                 if (waiting.length > 0) {
                     document.getElementById('tv-waiting-list').innerHTML = waiting.map(q => `
@@ -626,7 +624,6 @@
             });
         };
 
-        // สลับแสดงองค์ประกอบตามพารามิเตอร์ URL (?mode=staff หรือ ?mode=tv)
         const container = document.getElementById('app');
         if (mode === 'staff') {
             document.body.className = "bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col";
