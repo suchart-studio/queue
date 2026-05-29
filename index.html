@@ -250,7 +250,7 @@
         };
 
         // ==========================================
-        // TV DISPLAY MODE (อัปเดตใช้ MediaPipe Face Mesh)
+        // TV DISPLAY MODE (อัปเดตระบบครอปซูมใบหน้าอัตโนมัติ)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
@@ -258,6 +258,7 @@
             let faceDetectedStartTime = 0;
             let countdownInterval = null;
             let ticketTimer = null;
+            // ตัวแปรเก็บพิกัด Bounding Box ของใบหน้าจาก AI
             let lastFaceBox = null; 
 
             container.innerHTML = `
@@ -311,7 +312,7 @@
                                 <h3 class="text-slate-400 font-bold mb-1 uppercase tracking-widest text-xs">หมายเลขคิวของคุณคือ</h3>
                                 <div id="ticket-q-number" class="text-[5.5rem] font-black text-emerald-400 leading-none mb-3 tracking-tighter drop-shadow-md">A000</div>
                                 
-                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800">
+                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800 flex-shrink-0">
                                     <img id="ticket-face-img" src="" class="w-full h-full object-cover">
                                 </div>
                                 <p class="text-amber-400 font-bold text-lg"><i class="fa-solid fa-volume-high animate-pulse"></i> กรุณาจำหมายเลขคิวของคุณไว้ค่ะ</p>
@@ -332,9 +333,12 @@
                 </div>
             `;
             
+            // 🌟🌟🌟🌟🌟 ฟังก์ชันครอปและซูมชาญฉลาด ( rewrite ) 🌟🌟🌟🌟🌟
+            // ฟังก์ชันจะนำพิกัด Bounding Box จริงจาก AI มาคำนวณพื้นที่เผื่อขอบ (Padding)
+            // เพื่อให้ได้ภาพ "ส่วนหัว ทรงผม และใบหน้า" ที่สวยงาม ไม่ขาดช่วงสไตล์รูปติดบัตร
             const captureFaceImage = (videoEl) => {
                 const canvas = document.createElement('canvas');
-                const size = 320; 
+                const size = 320; // ขนาดรูปสุดท้ายที่จะบันทึก (จัตุรัส)
                 canvas.width = size;
                 canvas.height = size;
                 const ctx = canvas.getContext('2d');
@@ -345,31 +349,48 @@
                 let sx, sy, sWidth, sHeight;
 
                 if (lastFaceBox) {
+                    // แปลงพิกัด Normalized (0-1) เป็นพิกเซลจริงของตัวกล้อง
                     const fX = lastFaceBox.xMin * vw;
                     const fY = lastFaceBox.yMin * vh;
                     const fW = lastFaceBox.width * vw;
                     const fH = lastFaceBox.height * vh;
 
+                    // ปรับรัศมีการขยายกรอบครอป (Smart Padding)
+                    // เผื่อด้านข้าง 45% และเผื่อด้านบน 60% เพื่อไม่ให้ผมด้านบนขาด
                     const padX = fW * 0.45;
                     const padY = fH * 0.6;
 
+                    // คำนวณพิกัดเริ่มต้นในการครอปแบบเผื่อขอบ
                     sx = Math.max(0, fX - padX);
-                    sy = Math.max(0, fY - padY * 1.2); 
+                    sy = Math.max(0, fY - padY * 1.2); // ดึงขอบบนขึ้นไปอีกนิดเพื่อเก็บทรงผม
                     sWidth = Math.min(vw - sx, fW + padX * 2);
-                    sHeight = Math.min(vh - sy, fH + padY * 2.5);
+                    sHeight = Math.min(vh - sy, fH + padY * 2.5); // เพิ่มพื้นที่ด้านล่างถึงช่วงไหล่
 
+                    // รักษา Aspect Ratio ให้เป็น 1:1 จัตุรัสเสมอ
                     const finalDim = Math.max(sWidth, sHeight);
                     sWidth = finalDim; sHeight = finalDim;
+                    
+                    // Bound Check: ตรวจสอบไม่ให้กรอบหลุดขอบวิดีโอหลัก
+                    // หากขนาดใหญ่เกินไป ให้บีบสัดส่วนลงมาให้พอดี
+                    if (sx + sWidth > vw) { sx = Math.max(0, vw - sWidth); if(sWidth > vw) sWidth = vw; }
+                    if (sy + sHeight > vh) { sy = Math.max(0, vh - sHeight); if(sHeight > vh) sHeight = vh; }
+                    
+                    // ทำเป็นจัตุรัสอีกครั้งหลัง bound check
+                    const finalDimChecked = Math.min(sWidth, sHeight);
+                    sWidth = finalDimChecked; sHeight = finalDimChecked;
+
                 } else {
+                    // แผนสำรองกรณีหาพิกัดไม่เจอ ให้ตัดภาพกึ่งกลางสัดส่วนตรงกรอบพอดี
                     sWidth = Math.min(vw, vh) * 0.6; sHeight = sWidth;
                     sx = (vw - sWidth) / 2; sy = vh * 0.15;
                 }
                 
+                // วาดภาพจากวีดีโอลง Canvas พร้อมกลับด้าน (Mirror) เพื่อให้รูปถ่ายไม่หลอกตา
                 ctx.translate(size, 0);
                 ctx.scale(-1, 1);
                 ctx.drawImage(videoEl, sx, sy, sWidth, sHeight, 0, 0, size, size);
                 
-                return canvas.toDataURL('image/jpeg', 0.65); 
+                return canvas.toDataURL('image/jpeg', 0.65); // บีบอัดไฟล์ 65% ส่งเข้าฐานข้อมูลขนาดเบาตัว
             };
 
             const startWebcamWithAI = async () => {
@@ -388,16 +409,12 @@
                 }
 
                 try {
-                    // เปลี่ยนจาก FaceDetection เป็น FaceMesh ที่เสถียรกว่า
                     const faceMesh = new FaceMesh({
                         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
                     });
 
                     faceMesh.setOptions({
-                        maxNumFaces: 1,
-                        refineLandmarks: false,
-                        minDetectionConfidence: 0.5,
-                        minTrackingConfidence: 0.5
+                        maxNumFaces: 1, refineLandmarks: false, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
                     });
 
                     faceMesh.onResults((results) => {
@@ -419,7 +436,7 @@
                         if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                             const landmarks = results.multiFaceLandmarks[0];
                             
-                            // คำนวณ Bounding Box (กรอบใบหน้า) จากจุดต่างๆ
+                            // คำนวณ Bounding Box (กรอบใบหน้า) จากจุดต่างๆ ทั้ง 468 จุด
                             let xMin = 1, yMin = 1, xMax = 0, yMax = 0;
                             for (const l of landmarks) {
                                 if (l.x < xMin) xMin = l.x;
@@ -430,6 +447,7 @@
                             const width = xMax - xMin;
                             const height = yMax - yMin;
                             
+                            // เก็บพิกัด Bounding Box ไว้เพื่อนำไปใช้ครอปตอนถ่ายจริง
                             lastFaceBox = { xMin, yMin, width, height };
 
                             // วาดกรอบสี่เหลี่ยมสีเขียวบอกตำแหน่งให้รู้ว่า AI จับหน้าได้แล้ว
@@ -503,6 +521,7 @@
                         document.getElementById('ui-countdown').appendChild(flashEl);
                         playBeep('snap');
                         
+                        // 🌟 ลั่นชัตเตอร์และใช้ฟังก์ชัน Smart Cropping 🌟
                         const base64Photo = captureFaceImage(videoEl);
                         
                         const queueRef = push(ref(db, 'queues'));
