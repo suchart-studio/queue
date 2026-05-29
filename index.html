@@ -3,13 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Smart Queue System</title>
+    <title>Smart Face Queue System</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -27,6 +25,21 @@
             to { opacity: 1; transform: translateY(0); }
         }
         .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+        
+        /* กรอบโฟกัสใบหน้าสำหรับถ่ายรูป */
+        .face-guide {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 240px;
+            border: 3px dashed rgba(255, 255, 255, 0.5);
+            border-radius: 100px; /* ทรงวงรีคล้ายใบหน้า */
+            pointer-events: none;
+            z-index: 15;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -37,15 +50,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, push, set, onValue, update, remove, get } 
         from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-
-        // ==========================================
-        // --- การลงทะเบียน Service Worker ---
-        // ==========================================
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('Service Worker Registered'))
-            .catch(err => console.error('SW Error', err));
-        }
 
         // ==========================================
         // --- CONFIG ---
@@ -63,44 +67,11 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        let allVoices = [];
-        window.speechSynthesis.onvoiceschanged = () => {
-            allVoices = window.speechSynthesis.getVoices();
-        };
-
         const params = new URLSearchParams(window.location.search);
-        const mode = params.get('mode') || 'kiosk'; 
-        const AVG_SERVICE_TIME = 5; 
-
-        // ==========================================
-        // ฟังก์ชันส่วนกลางสำหรับสร้างคิวใหม่ 
-        // ==========================================
-        let isGenerating = false;
-        const createNewQueue = async () => {
-            if (isGenerating) return null;
-            isGenerating = true;
-
-            const qRef = push(ref(db, 'queues'));
-            const qNum = "A" + Math.floor(100 + Math.random() * 900);
-            
-            try {
-                await set(qRef, { 
-                    number: qNum, 
-                    status: 'waiting', 
-                    timestamp: Date.now(), 
-                    scanned: false 
-                });
-                return { key: qRef.key, number: qNum };
-            } catch (error) {
-                console.error("Firebase Sync Error:", error);
-                return null;
-            } finally {
-                setTimeout(() => { isGenerating = false; }, 1500);
-            }
-        };
+        const mode = params.get('mode') || 'tv'; // Default เป็น TV
 
         // --------------------------------------------------------
-        // ระบบเสียง
+        // ระบบเสียง (Beep & TTS)
         // --------------------------------------------------------
         const playBeep = (type = 'normal') => {
             try {
@@ -109,312 +80,36 @@
                 const ctx = new AudioContext();
                 const now = ctx.currentTime;
 
-                if (type === 'alarm') {
-                    [0, 0.4, 0.8].forEach(delay => {
-                        const osc = ctx.createOscillator();
-                        const gain = ctx.createGain();
-                        osc.connect(gain);
-                        gain.connect(ctx.destination);
-
-                        osc.type = 'square'; 
-                        osc.frequency.setValueAtTime(880, now + delay); 
-                        osc.frequency.linearRampToValueAtTime(600, now + delay + 0.3); 
-
-                        gain.gain.setValueAtTime(0.5, now + delay); 
-                        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.3);
-
-                        osc.start(now + delay);
-                        osc.stop(now + delay + 0.3);
-                    });
-                } else {
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    osc.connect(gain);
-                    gain.connect(ctx.destination);
-                    
-                    osc.type = 'sine';
-                    osc.frequency.value = 660; 
-                    gain.gain.setValueAtTime(0.1, now); 
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-                    
-                    osc.start(now);
-                    osc.stop(now + 0.3);
-                }
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                osc.type = 'sine';
+                osc.frequency.value = 660; 
+                gain.gain.setValueAtTime(0.1, now); 
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                
+                osc.start(now);
+                osc.stop(now + 0.3);
             } catch (e) { console.error("Audio Error", e); }
         };
 
-        const vibrateDevice = (pattern) => {
-            if (navigator.vibrate) navigator.vibrate(pattern);
-        };
-
-        const renderApp = () => {
-            const appDiv = document.getElementById('app');
-            if (mode === 'kiosk') renderKiosk(appDiv);
-            else if (mode === 'user') renderUser(appDiv);
-            else if (mode === 'staff') renderStaff(appDiv);
-            else if (mode === 'tv') renderTV(appDiv);
-        };
-
-        // ==========================================
-        // 1. KIOSK MODE 
-        // ==========================================
-        const renderKiosk = (container) => {
-            let resetTimer = null;
-            let currentUnsubscribe = null;
+        const speak = (text) => {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'th-TH'; utterance.rate = 0.9;
             
-            const resetKioskUI = () => {
-                const resultBox = document.getElementById('kiosk-result');
-                const btnGet = document.getElementById('btn-get-q');
-                const welcome = document.getElementById('welcome-text');
-                const shortcutHint = document.getElementById('shortcut-hint');
-                
-                if(resultBox) resultBox.classList.add('hidden');
-                if(btnGet) btnGet.style.display = 'flex';
-                if(welcome) welcome.style.display = 'block';
-                if(shortcutHint) shortcutHint.style.display = 'block';
-                
-                if(resetTimer) clearTimeout(resetTimer);
-                if(currentUnsubscribe) currentUnsubscribe(); 
-            };
-            
-            container.innerHTML = `
-                <div class="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 text-white p-4">
-                    <div class="bg-white text-gray-800 p-10 rounded-3xl shadow-2xl text-center max-w-md w-full min-h-[400px] flex flex-col justify-center relative">
-                        <div id="welcome-text">
-                            <img src="logo.png" alt="Agency Logo" class="h-64 mx-auto mb-6 object-contain" onerror="this.style.display='none'">
-                            <h1 class="text-3xl font-bold mb-2">ยินดีต้อนรับ</h1>
-                            <p class="text-gray-500 mb-8">กรุณากดปุ่มเพื่อรับบัตรคิว</p>
-                        </div>
-                        
-                        <button id="btn-get-q" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-2xl font-bold py-6 rounded-2xl shadow-lg transform transition active:scale-95 flex items-center justify-center gap-3">
-                            <i class="fa-solid fa-ticket"></i> กดรับคิว
-                        </button>
-                        <p id="shortcut-hint" class="text-sm text-gray-400 mt-4 font-mono select-none">
-                            <i class="fa-regular fa-keyboard"></i> Shortcut: Alt + Shift + Q
-                        </p>
-                        
-                        <div id="kiosk-result" class="hidden w-full animate-fade-in flex flex-col items-center">
-                            <p class="text-gray-500 text-sm">หมายเลขคิวของคุณ</p>
-                            <div id="q-number" class="text-7xl font-black text-blue-600 my-2 tracking-tighter"></div>
-                            
-                            <div class="bg-gray-50 p-6 rounded-xl border border-gray-200 shadow-inner mb-4 w-full flex flex-col items-center justify-center">
-                                <img src="logo.png" alt="Agency Logo" class="h-16 mb-4 object-contain" onerror="this.style.display='none'">
-                                <div id="qr-code"></div>
-                            </div>
-                            
-                            <p class="text-lg font-bold text-red-500 animate-pulse">
-                                <i class="fa-solid fa-mobile-screen-button"></i> กรุณาสแกนเพื่อติดตามคิว
-                            </p>
-                            <p class="text-xs text-gray-400 mt-2">(ปิดอัตโนมัติใน 30 วินาที)</p>
-                            <button id="btn-cancel" class="mt-6 text-gray-400 underline text-sm hover:text-gray-600">ปิดหน้าต่าง</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            document.getElementById('btn-get-q').onclick = async () => {
-                const btnGetQ = document.getElementById('btn-get-q');
-                btnGetQ.disabled = true;
-                btnGetQ.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin"></i> กำลังออกคิว...`;
+            const voices = window.speechSynthesis.getVoices();
+            const maleVoice = voices.find(v => v.lang.includes('th') && (v.name.includes('Male') || v.name.includes('Niwat') || v.name.includes('Pattara')));
+            if (maleVoice) utterance.voice = maleVoice;
+            else { const anyThai = voices.find(v => v.lang.includes('th')); if(anyThai) utterance.voice = anyThai; }
 
-                const res = await createNewQueue();
-                if (res) {
-                    const baseUrl = window.location.href.split('?')[0]; 
-                    const trackingUrl = `${baseUrl}?mode=user&id=${res.key}`;
-
-                    if (window.innerWidth <= 768) {
-                        window.location.href = trackingUrl;
-                        return;
-                    }
-                    
-                    btnGetQ.disabled = false;
-                    btnGetQ.innerHTML = `<i class="fa-solid fa-ticket"></i> กดรับคิว`;
-                    
-                    document.getElementById('btn-get-q').style.display = 'none';
-                    document.getElementById('welcome-text').style.display = 'none';
-                    document.getElementById('shortcut-hint').style.display = 'none';
-                    document.getElementById('q-number').innerText = res.number;
-                    document.getElementById('kiosk-result').classList.remove('hidden');
-                    
-                    document.getElementById('qr-code').innerHTML = '';
-                    new QRCode(document.getElementById('qr-code'), {
-                        text: trackingUrl, width: 150, height: 150,
-                        colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
-                    });
-
-                    setTimeout(() => {
-                        const qrImg = document.querySelector('#qr-code img');
-                        const qrCanvas = document.querySelector('#qr-code canvas');
-                        if(qrImg) qrImg.classList.add('mx-auto');
-                        if(qrCanvas) qrCanvas.classList.add('mx-auto');
-                    }, 50);
-
-                    resetTimer = setTimeout(() => resetKioskUI(), 30000);
-                    currentUnsubscribe = onValue(ref(db, 'queues/' + res.key), (snapshot) => {
-                        const data = snapshot.val();
-                        if (data && data.scanned === true) resetKioskUI();
-                    });
-                } else {
-                    alert("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
-                    btnGetQ.disabled = false;
-                    btnGetQ.innerHTML = `<i class="fa-solid fa-ticket"></i> กดรับคิว`;
-                }
-            };
-            
-            document.getElementById('btn-cancel').onclick = resetKioskUI;
+            window.speechSynthesis.speak(utterance);
         };
 
         // ==========================================
-        // 2. USER MODE
-        // ==========================================
-        const renderUser = (container) => {
-            const ticketId = params.get('id');
-            let soundEnabled = false;
-            let notifiedNear = false;
-            let notifiedServe = false;
-            let lastQAhead = -1;
-            let lastUserCallTime = 0; 
-
-            if (!ticketId) { container.innerHTML = `<div class="p-10 text-center">ไม่พบข้อมูลคิว</div>`; return; }
-            update(ref(db, 'queues/' + ticketId), { scanned: true });
-
-            container.innerHTML = `
-                <div class="min-h-screen bg-gray-50 flex flex-col items-center p-6 transition-colors duration-500" id="user-bg">
-                    <button id="btn-enable-sound" class="mb-4 bg-gray-200 text-gray-600 px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 shadow-sm animate-bounce">
-                        <i class="fa-solid fa-volume-xmark"></i> แตะเพื่อเปิดการแจ้งเตือน
-                    </button>
-                    <div id="capture-area" class="bg-white w-full max-w-sm rounded-3xl shadow-xl p-8 text-center relative overflow-hidden border border-gray-100">
-                        <div class="border-b border-gray-100 pb-4 mb-4">
-                            <div class="text-xs font-bold text-gray-400 uppercase tracking-widest">Digital Ticket</div>
-                            <div class="text-xs text-gray-400" id="timestamp-display"></div>
-                        </div>
-                        <div id="status-badge" class="absolute top-0 left-0 w-full h-2 bg-gray-300"></div>
-                        <p class="text-gray-500 mt-2">คิวของคุณ</p>
-                        <h1 id="my-q" class="text-6xl font-black text-gray-800 my-2 tracking-tighter">-</h1>
-                        <div class="bg-blue-50 rounded-xl p-4 my-4 border border-blue-100">
-                            <p class="text-lg font-bold text-gray-700" id="status-text">กำลังโหลด...</p>
-                            <div id="eta-box" class="mt-2 text-sm text-gray-500">
-                                รออีก <span id="q-ahead" class="font-bold">0</span> คิว (~<span id="eta-time">-</span> นาที)
-                            </div>
-                        </div>
-                        <div class="text-[10px] text-gray-300 mt-2">ID: ${ticketId.substring(1,8)}</div>
-                    </div>
-                    
-                    <button id="btn-pip" class="mt-6 bg-purple-500 hover:bg-purple-600 text-white py-3 px-8 rounded-full shadow-lg font-bold flex items-center gap-2 transform active:scale-95 transition hidden w-full max-w-sm justify-center">
-                        <i class="fa-solid fa-clone"></i> เปิดคิวเป็นหน้าต่างลอย (PiP)
-                    </button>
-                    
-                    <button id="btn-save-ticket" class="mt-3 bg-emerald-500 hover:bg-emerald-600 text-white py-3 px-8 rounded-full shadow-lg font-bold flex items-center gap-2 transform active:scale-95 transition w-full max-w-sm justify-center">
-                        <i class="fa-solid fa-download"></i> บันทึกรูปบัตรคิว
-                    </button>
-                </div>
-            `;
-
-            const btnSound = document.getElementById('btn-enable-sound');
-            const btnPip = document.getElementById('btn-pip');
-            const canvas = document.createElement('canvas');
-            canvas.width = 400; canvas.height = 400;
-            const ctx = canvas.getContext('2d');
-            const video = document.createElement('video');
-            video.muted = true; video.playsInline = true;
-
-            if (document.pictureInPictureEnabled) { btnPip.classList.remove('hidden'); }
-
-            btnPip.onclick = async () => {
-                try {
-                    const stream = canvas.captureStream(1);
-                    video.srcObject = stream;
-                    await video.play();
-                    await video.requestPictureInPicture();
-                } catch (e) {
-                    alert("อุปกรณ์หรือเบราว์เซอร์ของคุณไม่รองรับฟีเจอร์หน้าต่างลอย");
-                }
-            };
-
-            const updatePiPWindow = (qNum, qAhead, status) => {
-                ctx.fillStyle = status === 'serving' ? '#10b981' : '#1e293b'; 
-                ctx.fillRect(0, 0, 400, 400);
-                ctx.fillStyle = 'white'; ctx.textAlign = 'center';
-                ctx.font = '40px Sarabun';
-                ctx.fillText(status === 'serving' ? 'ถึงคิวของคุณแล้ว!' : 'คิวของคุณ', 200, 100);
-                ctx.font = 'bold 120px Sarabun';
-                ctx.fillText(qNum || '-', 200, 240);
-                if (status === 'waiting') {
-                    ctx.font = '30px Sarabun'; ctx.fillStyle = '#fbbf24';
-                    ctx.fillText(`รออีก ${qAhead} คิว`, 200, 320);
-                }
-            };
-
-            btnSound.onclick = () => {
-                soundEnabled = true; playBeep('normal'); vibrateDevice([100]);
-                btnSound.className = "mb-4 bg-green-100 text-green-600 px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 shadow-sm";
-                btnSound.innerHTML = `<i class="fa-solid fa-volume-high"></i> เปิดการแจ้งเตือนแล้ว`;
-                if ("Notification" in window && Notification.permission !== "granted") {
-                    Notification.requestPermission();
-                }
-            };
-
-            document.getElementById('btn-save-ticket').onclick = () => {
-                html2canvas(document.getElementById('capture-area'), { scale: 2 }).then(canvas => {
-                    const link = document.createElement('a');
-                    link.download = `Queue-Ticket.png`; link.href = canvas.toDataURL("image/png"); link.click();
-                });
-            };
-
-            onValue(ref(db, 'queues'), (snapshot) => {
-                const allData = snapshot.val() || {};
-                const myData = allData[ticketId];
-                if (!myData) { document.getElementById('status-text').innerText = "คิวนี้ถูกยกเลิก"; return; }
-
-                document.getElementById('my-q').innerText = myData.number;
-                const date = new Date(myData.timestamp);
-                document.getElementById('timestamp-display').innerText = date.toLocaleDateString('th-TH') + ' ' + date.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
-
-                const bg = document.getElementById('user-bg');
-                const badge = document.getElementById('status-badge');
-                const statusTxt = document.getElementById('status-text');
-
-                if (myData.status === 'serving') {
-                    bg.className = "min-h-screen flex flex-col items-center p-6 bg-green-500";
-                    badge.className = "absolute top-0 left-0 w-full h-4 bg-green-600 animate-pulse";
-                    statusTxt.innerHTML = `เชิญช่อง <span class="text-3xl block mt-2 text-green-600">${myData.counter}</span>`;
-                    document.getElementById('eta-box').style.display = 'none';
-                    updatePiPWindow(myData.number, 0, 'serving');
-
-                    if (soundEnabled && (!notifiedServe || myData.callTime !== lastUserCallTime)) {
-                        playBeep('alarm'); vibrateDevice([500, 200, 500, 200, 500]); 
-                        if ("Notification" in window && Notification.permission === "granted") {
-                            navigator.serviceWorker.ready.then(function(registration) {
-                                registration.showNotification(`📢 ถึงคิวที่ ${myData.number} แล้ว!`, {
-                                    body: `ขอเชิญรับบริการที่ช่องหมายเลข ${myData.counter} ครับ/ค่ะ`,
-                                    icon: 'https://cdn-icons-png.flaticon.com/512/2550/2550212.png',
-                                    vibrate: [500, 200, 500], requireInteraction: true 
-                                });
-                            });
-                        }
-                        notifiedServe = true; lastUserCallTime = myData.callTime; 
-                    }
-                } else if (myData.status === 'waiting') {
-                    bg.className = "min-h-screen flex flex-col items-center p-6 bg-gray-50";
-                    badge.className = "absolute top-0 left-0 w-full h-2 bg-yellow-400";
-                    statusTxt.innerText = "กำลังรอเรียก...";
-                    document.getElementById('eta-box').style.display = 'block';
-                    
-                    let qAhead = 0;
-                    Object.values(allData).forEach(q => { if (q.status === 'waiting' && q.timestamp < myData.timestamp) qAhead++; });
-                    document.getElementById('q-ahead').innerText = qAhead;
-                    document.getElementById('eta-time').innerText = Math.ceil((qAhead * AVG_SERVICE_TIME) / 3) || 1;
-                    updatePiPWindow(myData.number, qAhead, 'waiting');
-
-                    if (qAhead <= 2 && qAhead > 0 && soundEnabled && !notifiedNear) {
-                        playBeep('normal'); vibrateDevice([200, 100, 200]); notifiedNear = true;
-                    }
-                }
-            });
-        };
-
-        // ==========================================
-        // 3. STAFF MODE 
+        // STAFF MODE (เจ้าหน้าที่)
         // ==========================================
         const renderStaff = (container) => {
             let currentCounter = 1;
@@ -449,14 +144,13 @@
             container.innerHTML = `
                 <div class="min-h-screen bg-slate-100 p-4 md:p-8">
                     <div class="max-w-4xl mx-auto">
+                        <div class="bg-white p-4 rounded-xl shadow-sm mb-6 flex justify-between items-center">
+                            <h1 class="text-xl font-bold text-slate-700"><i class="fa-solid fa-user-tie"></i> Staff Console</h1>
+                            <button id="btn-reset" class="text-xs text-red-500 hover:underline"><i class="fa-solid fa-trash"></i> ล้างคิวทั้งหมด</button>
+                        </div>
                         <div class="bg-white p-4 rounded-xl shadow-sm mb-6">
-                            <div class="flex justify-between items-center mb-4 border-b pb-4">
-                                <h1 class="text-xl font-bold text-slate-700"><i class="fa-solid fa-user-tie"></i> Staff Console</h1>
-                            </div>
-                            <div>
-                                <p class="text-sm text-slate-500 mb-3 font-semibold"><i class="fa-solid fa-desktop"></i> เลือกช่องบริการ:</p>
-                                <div class="flex flex-wrap gap-2" id="counter-buttons"></div>
-                            </div>
+                            <p class="text-sm text-slate-500 mb-3 font-semibold"><i class="fa-solid fa-desktop"></i> เลือกช่องบริการ:</p>
+                            <div class="flex flex-wrap gap-2" id="counter-buttons"></div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div class="bg-white p-6 rounded-xl shadow-md text-center border-t-4 border-blue-500">
@@ -516,8 +210,11 @@
                 const waiting = queues.filter(q => q.status === 'waiting').sort((a,b) => a.timestamp - b.timestamp);
                 document.getElementById('staff-wait-count').innerText = waiting.length;
                 document.getElementById('staff-wait-list').innerHTML = waiting.map(q => 
-                    `<li class="flex justify-between p-2 bg-white rounded shadow-sm">
-                        <span class="font-bold text-slate-700">${q.number}</span>
+                    `<li class="flex justify-between items-center p-2 bg-white rounded shadow-sm border border-slate-100">
+                        <div class="flex items-center gap-3">
+                            ${q.faceImage ? `<img src="${q.faceImage}" class="w-8 h-8 rounded-full object-cover shadow">` : `<div class="w-8 h-8 rounded-full bg-slate-200"></div>`}
+                            <span class="font-bold text-slate-700">${q.number}</span>
+                        </div>
                         <span class="text-gray-400 text-xs">${new Date(q.timestamp).toLocaleTimeString()}</span>
                      </li>`
                 ).join('');
@@ -532,25 +229,38 @@
             
             document.getElementById('btn-recall').onclick = () => { if (currentQID) update(ref(db, `queues/${currentQID}`), { callTime: Date.now() }); };
             document.getElementById('btn-finish').onclick = () => { if (currentQID) update(ref(db, `queues/${currentQID}`), { status: 'done' }); };
+            document.getElementById('btn-reset').onclick = () => { if(confirm('คุณแน่ใจหรือไม่ที่จะล้างข้อมูลคิวทั้งหมด?')) set(ref(db, 'queues'), null); }
             
             onValue(ref(db, 'queues'), (snap) => updateUI(snap.val()));
+
+            // Keyboard shortcut สำหรับเปลี่ยนช่องบริการ 1-0
+            window.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                const keyMap = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '0': 10 };
+                if (keyMap[e.key]) {
+                    currentCounter = keyMap[e.key];
+                    renderCounterButtons(); 
+                    get(ref(db, 'queues')).then(snap => updateUI(snap.val()));
+                }
+            });
         };
 
         // ==========================================
-        // 4. TV DISPLAY MODE (อัปเดตระบบ AI โชว์เส้นมือ + นับถอยหลัง 3 วิ + QR 45 วิ)
+        // TV DISPLAY MODE (ระบบ AI Face & Queue)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
-            let resetTimer = null;
-            let qrCountdownTimer = null; // ตัวแปรสำหรับจับเวลานับถอยหลังของ QR
-            let currentlyShowingQID = null; 
+            let cameraState = 'WAITING_FOR_POSE'; // WAITING_FOR_POSE, HOLDING, COUNTDOWN, SHOWING_TICKET
+            let poseStartTime = 0;
+            let countdownInterval = null;
+            let ticketTimer = null;
 
             container.innerHTML = `
                 <div class="relative w-screen h-screen bg-slate-900 text-white overflow-hidden flex">
-                    <div id="sound-overlay" class="absolute inset-0 bg-black/90 z-50 flex items-center justify-center cursor-pointer">
+                    <div id="sound-overlay" class="absolute inset-0 bg-black/95 z-50 flex items-center justify-center cursor-pointer">
                         <div class="text-center">
                             <i class="fa-solid fa-volume-high text-6xl mb-4 text-emerald-400 animate-bounce"></i>
-                            <h2 class="text-2xl font-bold">คลิกที่นี่เพื่อเปิดใช้งานหน้าจอ</h2>
+                            <h2 class="text-2xl font-bold">คลิกที่นี่เพื่อเปิดใช้งานหน้าจอแสดงผล</h2>
                         </div>
                     </div>
                     
@@ -559,311 +269,351 @@
                         <div id="tv-serving-list" class="grid grid-cols-1 gap-4 h-full overflow-hidden pb-4"></div>
                     </div>
                     
-                    <div class="w-1/3 bg-slate-800 p-8 flex flex-col shadow-2xl justify-between overflow-y-auto">
-                        <div>
-                            <h2 class="text-2xl font-bold text-slate-400 mb-4 pb-4 border-b border-slate-700">คิวถัดไป / NEXT</h2>
-                            <ul id="tv-waiting-list" class="mb-6"></ul>
+                    <div class="w-1/3 p-8 flex flex-col shadow-2xl justify-between bg-slate-800 relative">
+                        
+                        <div class="mb-2">
+                            <h2 class="text-2xl font-bold text-slate-400 flex items-center justify-between">
+                                รับคิวอัตโนมัติ 
+                                <i class="fa-solid fa-camera text-emerald-500 animate-pulse text-lg"></i>
+                            </h2>
                         </div>
                         
-                        <div class="mb-4 flex flex-col flex-1 justify-center relative">
-                            <p class="text-xs text-slate-500 mb-2 font-semibold flex items-center gap-1.5">
-                                <i class="fa-solid fa-video text-emerald-500 animate-pulse"></i> Live AI Camera Feed
-                            </p>
+                        <div class="relative rounded-2xl overflow-hidden border-4 border-slate-700 bg-black w-full aspect-[3/4] shadow-2xl flex-shrink-0">
+                            <video id="tv-webcam" autoplay playsinline muted class="hidden"></video>
+                            <canvas id="tv-canvas" class="absolute inset-0 w-full h-full object-cover z-10 transform scale-x-[-1]"></canvas>
                             
-                            <div class="relative rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video w-full shadow-inner">
-                                <video id="tv-webcam" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
-                                <canvas id="tv-canvas" class="absolute inset-0 w-full h-full object-cover z-10"></canvas>
-                                
-                                <div id="gesture-countdown" class="hidden absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-20 backdrop-blur-sm">
-                                    <span class="text-[8rem] font-black text-amber-400 leading-none drop-shadow-2xl" id="countdown-number">3</span>
-                                    <span class="text-white text-lg font-bold mt-2 animate-pulse">ค้างไว้...</span>
+                            <div class="face-guide" id="face-guide-overlay"></div>
+                            
+                            <div id="ui-instruction" class="absolute bottom-6 left-0 w-full text-center z-20">
+                                <div class="inline-block bg-black/70 backdrop-blur-sm px-4 py-2 rounded-xl text-white border border-slate-600 shadow-xl">
+                                    <i class="fa-solid fa-hand-peace text-3xl text-emerald-400 mb-1 block"></i>
+                                    <span class="font-bold text-sm">มองกล้อง & ชูสองนิ้วค้างไว้</span>
                                 </div>
+                            </div>
 
-                                <div id="webcam-error" class="hidden absolute inset-0 bg-slate-950 p-4 text-center flex flex-col items-center justify-center text-xs text-red-400 z-30">
-                                    <i class="fa-solid fa-camera-rotable text-2xl mb-2 text-slate-600"></i>
-                                    ไม่สามารถเข้าถึงกล้องเว็บแคมได้
-                                </div>
+                            <div id="ui-holding" class="hidden absolute inset-0 bg-amber-500/30 flex flex-col items-center justify-center z-30 backdrop-blur-sm transition-all">
+                                <span class="text-[10rem] font-black text-white leading-none drop-shadow-[0_10px_10px_rgba(0,0,0,0.8)]" id="hold-number">3</span>
+                                <span class="text-white text-xl font-bold mt-2 animate-pulse bg-black/50 px-4 py-1 rounded-full">ค้างไว้...</span>
                             </div>
+
+                            <div id="ui-countdown" class="hidden absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-40 backdrop-blur-md">
+                                <span class="text-[8rem] font-black text-emerald-400 leading-none drop-shadow-2xl" id="capture-number">5</span>
+                                <span class="text-white text-2xl font-bold mt-4 animate-bounce"><i class="fa-solid fa-camera"></i> เตรียมถ่ายภาพ!</span>
+                            </div>
+
+                            <div id="ui-ticket" class="hidden absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
+                                <h3 class="text-slate-400 font-bold mb-2 uppercase tracking-widest text-sm">หมายเลขคิวของคุณ</h3>
+                                <div id="ticket-q-number" class="text-[6rem] font-black text-emerald-400 leading-none mb-4 tracking-tighter drop-shadow-lg">AXXX</div>
+                                <div class="w-40 h-40 rounded-full border-4 border-white overflow-hidden shadow-2xl mb-4">
+                                    <img id="ticket-face-img" src="" class="w-full h-full object-cover transform scale-x-[-1]">
+                                </div>
+                                <p class="text-amber-400 font-bold text-lg"><i class="fa-solid fa-volume-high"></i> กรุณาจำหมายเลขคิวไว้ค่ะ</p>
+                                <p class="text-slate-500 text-xs mt-2">(หน้าต่างจะปิดใน <span id="ticket-close-sec">10</span> วินาที)</p>
+                            </div>
+
                         </div>
-                        
-                        <div class="rounded-xl shadow-lg border border-slate-700 bg-slate-900 w-full p-6 flex flex-col items-center justify-center flex-shrink-0 min-h-[260px] relative">
-                            <div id="tv-kiosk-idle" class="flex flex-col items-center justify-center text-center w-full animate-fade-in">
-                                <i class="fa-solid fa-hand-peace text-5xl text-slate-500 mb-4 animate-bounce"></i>
-                                <h3 class="text-xl font-bold text-slate-300 mb-2">รับบัตรคิว</h3>
-                                <p class="text-slate-500 text-sm mb-1">
-                                    ชูสองนิ้ว ✌️ <span class="text-amber-400">ค้างไว้ 3 วิ</span>
-                                </p>
-                                <p class="text-slate-600 text-[11px]">
-                                    หรือกด <kbd class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-400 font-mono text-[10px]">Alt+Shift+Q</kbd>
-                                </p>
-                            </div>
-                            <div id="tv-kiosk-result" class="hidden flex-col items-center justify-center text-center w-full animate-fade-in">
-                                <p class="text-slate-400 text-sm mb-1">คิวของคุณคือ</p>
-                                <div id="tv-q-number" class="text-5xl font-black text-emerald-400 mb-2 tracking-tighter"></div>
-                                <div class="bg-white p-2 rounded-xl mb-2">
-                                    <div id="tv-kiosk-qrcode"></div>
-                                </div>
-                                <p class="text-xs font-bold text-slate-300">
-                                    <i class="fa-solid fa-mobile-screen-button text-emerald-500"></i> สแกนรับตั๋วเข้ามือถือ
-                                </p>
-                                <p class="text-[11px] text-slate-500 mt-2">(ปิดอัตโนมัติใน <span id="qr-countdown-text" class="text-amber-500 font-bold">45</span> วิ)</p>
-                            </div>
+
+                        <div class="mt-6 flex-1 flex flex-col">
+                            <h2 class="text-lg font-bold text-slate-400 mb-3 border-b border-slate-700 pb-2">คิวที่รอ (NEXT)</h2>
+                            <ul id="tv-waiting-list" class="space-y-3"></ul>
                         </div>
                     </div>
                 </div>
             `;
             
+            // ฟังก์ชันถ่ายภาพและครอปเฉพาะบริเวณกรอบวงรี (Face Guide)
+            const captureFaceImage = (videoEl) => {
+                const canvas = document.createElement('canvas');
+                // ตั้งขนาดภาพที่จะบันทึกให้เป็นสี่เหลี่ยมจัตุรัสเพื่อให้แสดงผลในวงกลมได้สวยงาม
+                const size = 300; 
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                
+                // คำนวณตำแหน่ง X, Y จากวิดีโอ (อ้างอิงตำแหน่ง .face-guide top 15%, center)
+                const vw = videoEl.videoWidth;
+                const vh = videoEl.videoHeight;
+                
+                // คำนวณกล่องครอปแบบคร่าวๆ ให้อยู่กลางค่อนไปด้านบน
+                const cropWidth = Math.min(vw, vh) * 0.7; // ความกว้างของการครอป
+                const startX = (vw - cropWidth) / 2;
+                const startY = vh * 0.1; // ขยับลงมา 10% จากด้านบน
+                
+                // วาดภาพจากวีดีโอลง Canvas พร้อมกลับด้าน (Mirror) เพื่อให้เหมือนกระจก
+                ctx.translate(size, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(videoEl, startX, startY, cropWidth, cropWidth, 0, 0, size, size);
+                
+                return canvas.toDataURL('image/jpeg', 0.6); // บีบอัด 60% เพื่อลดภาระ Firebase
+            };
+
+            // เริ่มต้นระบบ AI
             const startWebcamWithAI = async () => {
                 const videoEl = document.getElementById('tv-webcam');
                 const canvasEl = document.getElementById('tv-canvas');
                 const canvasCtx = canvasEl.getContext('2d');
                 
-                const errorEl = document.getElementById('webcam-error');
-                const countdownOverlay = document.getElementById('gesture-countdown');
-                const countdownNumber = document.getElementById('countdown-number');
+                // UI Elements
+                const uiInstruction = document.getElementById('ui-instruction');
+                const uiHolding = document.getElementById('ui-holding');
+                const holdNumber = document.getElementById('hold-number');
+                const uiCountdown = document.getElementById('ui-countdown');
+                const captureNumber = document.getElementById('capture-number');
+                const uiTicket = document.getElementById('ui-ticket');
+                const faceGuide = document.getElementById('face-guide-overlay');
 
                 if (typeof Hands === 'undefined' || typeof Camera === 'undefined' || typeof drawConnectors === 'undefined') {
-                    if(errorEl) { errorEl.classList.remove('hidden'); errorEl.innerText = "กำลังดาวน์โหลดระบบ AI..."; }
+                    console.error("MediaPipe ไม่พร้อมใช้งาน");
                     return;
                 }
 
                 try {
                     const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-
                     hands.setOptions({
-                        maxNumHands: 1,
-                        modelComplexity: 1,
-                        minDetectionConfidence: 0.75,
-                        minTrackingConfidence: 0.75
+                        maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7
                     });
 
-                    let gestureCooldown = false;
-                    let gestureStartTime = 0; 
-                    const HOLD_DURATION = 3000; // กำหนดเวลาให้ค้างไว้ 3 วินาทีตามบรีฟ
-
                     hands.onResults((results) => {
-                        // ปรับขนาด Canvas ให้พอดีกับวิดีโอเพื่อวาดเส้น
+                        // ตั้งค่า Canvas ให้ตรงกับวิดีโอ
                         canvasEl.width = videoEl.videoWidth;
                         canvasEl.height = videoEl.videoHeight;
                         canvasCtx.save();
                         canvasCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+                        
+                        // วาดภาพวิดีโอลง Canvas
+                        canvasCtx.drawImage(results.image, 0, 0, canvasEl.width, canvasEl.height);
 
+                        // ถ้าระบบกำลังอยู่ในสถานะแสดงตั๋วคิว หรือ นับถอยหลังถ่ายรูป จะซ่อนเส้นมือ
+                        if (cameraState === 'SHOWING_TICKET' || cameraState === 'COUNTDOWN') {
+                            canvasCtx.restore();
+                            return; 
+                        }
+
+                        // วาดเส้นมือ (Landmarks)
                         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                            
-                            // 1. วาดเส้นและจุดบนมือ (Landmarks Feedback)
-                            for (const landmarks of results.multiHandLandmarks) {
-                                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#10b981', lineWidth: 4});
-                                drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 2, radius: 4});
-                            }
-
-                            // 2. หยุดตรวจจับท่าทางมือหากหน้าต่าง QR Code เด้งอยู่ (ตามบรีฟข้อ 4)
-                            if (currentlyShowingQID) {
-                                canvasCtx.restore();
-                                return; 
-                            }
-
                             const landmarks = results.multiHandLandmarks[0];
+                            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#10b981', lineWidth: 4});
+                            drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 2, radius: 4});
 
                             // เช็คการทำมือ 2 นิ้ว ✌️
                             const isIndexUp = landmarks[8].y < landmarks[6].y;
                             const isMiddleUp = landmarks[12].y < landmarks[10].y;
                             const isRingFolded = landmarks[16].y > landmarks[14].y;
                             const isPinkyFolded = landmarks[20].y > landmarks[18].y;
+                            
+                            // นิ้วโป้ง (4) พับเก็บเข้าใน (x เข้าหาศูนย์กลาง) - เพื่อป้องกันความผิดพลาด
+                            // แต่เพื่อความลื่นไหล จะเช็คแค่นิ้วหลัก 4 นิ้วก็เพียงพอ
+                            
+                            const isPeaceSign = isIndexUp && isMiddleUp && isRingFolded && isPinkyFolded;
 
-                            if (isIndexUp && isMiddleUp && isRingFolded && isPinkyFolded) {
-                                if (!gestureCooldown && !isGenerating) {
-                                    
-                                    // หากเพิ่งเริ่มชู 2 นิ้วเป็นครั้งแรก
-                                    if (gestureStartTime === 0) {
-                                        gestureStartTime = Date.now();
-                                        if(countdownOverlay) countdownOverlay.classList.remove('hidden');
-                                        if(countdownNumber) countdownNumber.innerText = "3";
-                                    } 
-                                    else {
-                                        const elapsed = Date.now() - gestureStartTime;
-                                        const timeLeft = Math.ceil((HOLD_DURATION - elapsed) / 1000); // แปลงเป็น 3, 2, 1
+                            if (cameraState === 'WAITING_FOR_POSE' || cameraState === 'HOLDING') {
+                                if (isPeaceSign) {
+                                    if (cameraState === 'WAITING_FOR_POSE') {
+                                        // เปลี่ยนสถานะเป็น HOLDING
+                                        cameraState = 'HOLDING';
+                                        poseStartTime = Date.now();
                                         
-                                        // หากชูค้างไว้จนครบเวลาที่กำหนดแล้ว (3 วินาที)
-                                        if (elapsed >= HOLD_DURATION) {
-                                            gestureCooldown = true;
-                                            gestureStartTime = 0; // รีเซ็ต
-                                            
-                                            if(countdownOverlay) countdownOverlay.classList.add('hidden');
-                                            createNewQueue(); // สั่งสร้างคิว
-                                            
-                                            // ป้องกันการออกคิวรัวๆ หลังเสร็จสิ้น
-                                            setTimeout(() => { gestureCooldown = false; }, 5000);
+                                        uiInstruction.classList.add('hidden');
+                                        uiHolding.classList.remove('hidden');
+                                        faceGuide.style.borderColor = '#fbbf24'; // เปลี่ยนกรอบเป็นสีเหลือง
+                                    } 
+                                    else if (cameraState === 'HOLDING') {
+                                        const elapsed = Date.now() - poseStartTime;
+                                        const HOLD_TIME = 3000;
+                                        const timeLeft = Math.ceil((HOLD_TIME - elapsed) / 1000);
+                                        
+                                        if (elapsed >= HOLD_TIME) {
+                                            // ล็อกเป้าสำเร็จ เริ่มกระบวนการนับถอยหลัง 5 วิ
+                                            startCaptureCountdown(videoEl);
                                         } else {
-                                            // อัปเดตตัวเลข 3.. 2.. 1.. กลางจอ
-                                            if(countdownNumber) countdownNumber.innerText = timeLeft.toString();
+                                            holdNumber.innerText = timeLeft.toString();
                                         }
                                     }
-                                }
-                            } else {
-                                // ถ้าทำท่าผิด หรือเอามือลง ให้รีเซ็ตเวลาการนับทันที
-                                if (gestureStartTime !== 0 && !gestureCooldown) {
-                                    gestureStartTime = 0;
-                                    if(countdownOverlay) countdownOverlay.classList.add('hidden');
+                                } else {
+                                    // ทำท่าผิด หรือเอามือลง รีเซ็ตกลับไปรอ
+                                    resetToWaiting(false);
                                 }
                             }
                         } else {
-                            // ถ้ามือหลุดออกจากกล้อง รีเซ็ต
-                            if (gestureStartTime !== 0 && !gestureCooldown) {
-                                gestureStartTime = 0;
-                                if(countdownOverlay) countdownOverlay.classList.add('hidden');
-                            }
+                            // ไม่มีมือในกล้อง
+                            if (cameraState === 'HOLDING') resetToWaiting(false);
                         }
                         canvasCtx.restore();
                     });
 
                     const camera = new Camera(videoEl, {
                         onFrame: async () => { await hands.send({image: videoEl}); },
-                        width: 640, height: 480
+                        width: 480, height: 640 // Portrait ratio
                     });
                     camera.start();
 
                 } catch (err) {
-                    if (errorEl) errorEl.classList.remove('hidden');
+                    console.error("Camera Init Error", err);
                 }
             };
 
-            startWebcamWithAI();
+            // ฟังก์ชันนับถอยหลัง 5 วินาที เพื่อถ่ายภาพ
+            const startCaptureCountdown = (videoEl) => {
+                cameraState = 'COUNTDOWN';
+                let timeLeft = 5;
+                
+                // จัดการ UI
+                document.getElementById('ui-holding').classList.add('hidden');
+                document.getElementById('ui-countdown').classList.remove('hidden');
+                document.getElementById('face-guide-overlay').style.borderColor = '#10b981'; // กรอบสีเขียว
+                document.getElementById('capture-number').innerText = timeLeft;
+                
+                speak("เตรียมถ่ายภาพ ในอีก 5 วินาที");
 
+                countdownInterval = setInterval(async () => {
+                    timeLeft--;
+                    if (timeLeft > 0) {
+                        document.getElementById('capture-number').innerText = timeLeft;
+                        // เสียงติ๊กๆ 
+                        playBeep('normal');
+                    } else {
+                        clearInterval(countdownInterval);
+                        
+                        // แฟลชหน้าจอขาว 1 ทีจำลองการถ่ายภาพ
+                        const flash = document.createElement('div');
+                        flash.className = "absolute inset-0 bg-white z-50 animate-pulse";
+                        document.getElementById('ui-countdown').appendChild(flash);
+                        playBeep('alarm'); // เสียงแชะ!
+                        
+                        // ถ่ายภาพและบันทึก
+                        const faceBase64 = captureFaceImage(videoEl);
+                        
+                        // สร้างคิว
+                        const qRef = push(ref(db, 'queues'));
+                        const qNum = "A" + Math.floor(100 + Math.random() * 900);
+                        await set(qRef, { 
+                            number: qNum, 
+                            status: 'waiting', 
+                            timestamp: Date.now(), 
+                            faceImage: faceBase64 
+                        });
+
+                        setTimeout(() => {
+                            flash.remove();
+                            showTicketScreen(qNum, faceBase64);
+                        }, 200);
+                    }
+                }, 1000);
+            };
+
+            // ฟังก์ชันแสดงหน้าต่างบัตรคิว 10 วินาที
+            const showTicketScreen = (qNum, faceImgBase64) => {
+                cameraState = 'SHOWING_TICKET';
+                
+                document.getElementById('ui-countdown').classList.add('hidden');
+                document.getElementById('face-guide-overlay').classList.add('hidden');
+                
+                const uiTicket = document.getElementById('ui-ticket');
+                uiTicket.classList.remove('hidden');
+                
+                document.getElementById('ticket-q-number').innerText = qNum;
+                document.getElementById('ticket-face-img').src = faceImgBase64;
+                
+                speak(`คิวของคุณคือ ${qNum} กรุณาจำหมายเลขคิวของคุณไว้ค่ะ`);
+
+                let timeLeft = 10;
+                document.getElementById('ticket-close-sec').innerText = timeLeft;
+                
+                ticketTimer = setInterval(() => {
+                    timeLeft--;
+                    document.getElementById('ticket-close-sec').innerText = timeLeft;
+                    if (timeLeft <= 0) {
+                        clearInterval(ticketTimer);
+                        resetToWaiting(true);
+                    }
+                }, 1000);
+            };
+
+            // ฟังก์ชันรีเซ็ตระบบกล้องกลับไปหน้าพร้อมใช้งาน
+            const resetToWaiting = (fullReset = false) => {
+                cameraState = 'WAITING_FOR_POSE';
+                poseStartTime = 0;
+                
+                if (countdownInterval) clearInterval(countdownInterval);
+                if (ticketTimer) clearInterval(ticketTimer);
+                
+                document.getElementById('ui-instruction').classList.remove('hidden');
+                document.getElementById('ui-holding').classList.add('hidden');
+                document.getElementById('ui-countdown').classList.add('hidden');
+                
+                const faceGuide = document.getElementById('face-guide-overlay');
+                faceGuide.classList.remove('hidden');
+                faceGuide.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+
+                if (fullReset) {
+                    document.getElementById('ui-ticket').classList.add('hidden');
+                }
+            };
+
+            // เริ่มทำงานกล้อง
+            startWebcamWithAI();
+            
+            // เปิดเสียงเบราว์เซอร์
             document.getElementById('sound-overlay').onclick = function() {
                 this.remove();
                 playBeep('normal');
             };
 
-            const resetTvKioskUI = () => {
-                const resultBox = document.getElementById('tv-kiosk-result');
-                const idleBox = document.getElementById('tv-kiosk-idle');
-                
-                if(resultBox) { resultBox.classList.add('hidden'); resultBox.classList.remove('flex'); }
-                if(idleBox) { idleBox.classList.remove('hidden'); idleBox.classList.add('flex'); }
-                
-                if (resetTimer) clearTimeout(resetTimer);
-                if (qrCountdownTimer) clearInterval(qrCountdownTimer); // เคลียร์ตัวนับเวลา 45 วิ
-                
-                currentlyShowingQID = null;
-            };
-
-            const showKioskQR = (qID, qNum) => {
-                if (currentlyShowingQID === qID) return; 
-                currentlyShowingQID = qID;
-
-                const resultBox = document.getElementById('tv-kiosk-result');
-                const idleBox = document.getElementById('tv-kiosk-idle');
-                
-                if(idleBox) { idleBox.classList.remove('flex'); idleBox.classList.add('hidden'); }
-                if(resultBox) { resultBox.classList.remove('hidden'); resultBox.classList.add('flex'); }
-                
-                document.getElementById('tv-q-number').innerText = qNum;
-                
-                const baseUrl = window.location.href.split('?')[0]; 
-                const trackingUrl = `${baseUrl}?mode=user&id=${qID}`;
-
-                document.getElementById('tv-kiosk-qrcode').innerHTML = '';
-                new QRCode(document.getElementById('tv-kiosk-qrcode'), {
-                    text: trackingUrl, width: 125, height: 125,
-                    colorDark : "#0f172a", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
-                });
-
-                setTimeout(() => {
-                    const qrImg = document.querySelector('#tv-kiosk-qrcode img');
-                    const qrCanvas = document.querySelector('#tv-kiosk-qrcode canvas');
-                    if(qrImg) qrImg.classList.add('mx-auto');
-                    if(qrCanvas) qrCanvas.classList.add('mx-auto');
-                }, 50);
-
-                // เริ่มกระบวนการจับเวลาแสดง QR 45 วินาที
-                if (resetTimer) clearTimeout(resetTimer);
-                if (qrCountdownTimer) clearInterval(qrCountdownTimer);
-                
-                let timeLeft = 45;
-                const timerSpan = document.getElementById('qr-countdown-text');
-                if (timerSpan) timerSpan.innerText = timeLeft;
-
-                qrCountdownTimer = setInterval(() => {
-                    timeLeft--;
-                    if (timerSpan) timerSpan.innerText = timeLeft;
-                    if (timeLeft <= 0) {
-                        clearInterval(qrCountdownTimer);
-                    }
-                }, 1000);
-
-                resetTimer = setTimeout(() => { resetTvKioskUI(); }, 45000); // ปิดเมื่อครบ 45 วิ
-            };
-
-            const speak = (text) => {
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'th-TH'; utterance.rate = 0.9;
-                
-                const voices = window.speechSynthesis.getVoices();
-                const maleVoice = voices.find(v => v.lang.includes('th') && (v.name.includes('Male') || v.name.includes('Niwat') || v.name.includes('Pattara')));
-                if (maleVoice) utterance.voice = maleVoice;
-                else { const anyThai = voices.find(v => v.lang.includes('th')); if(anyThai) utterance.voice = anyThai; }
-
-                window.speechSynthesis.speak(utterance);
-            };
-
+            // ติดตามการเปลี่ยนแปลงฐานข้อมูลเพื่อแสดงผลคิว
             onValue(ref(db, 'queues'), (snapshot) => {
                 const data = snapshot.val() || {};
                 const queues = Object.entries(data).map(([id, val]) => ({id, ...val}));
                 
-                const waitingQueues = queues.filter(q => q.status === 'waiting').sort((a,b) => b.timestamp - a.timestamp);
-                if (waitingQueues.length > 0) {
-                    const newest = waitingQueues[0];
-                    const age = Date.now() - newest.timestamp;
-                    
-                    // ปรับเงื่อนไขการดึง QR โชว์ให้รองรับ 45 วินาที (45000 ms)
-                    if (age < 45000 && newest.scanned === false) {
-                        showKioskQR(newest.id, newest.number);
-                    } else {
-                        if (currentlyShowingQID) resetTvKioskUI();
-                    }
-                } else {
-                    if (currentlyShowingQID) resetTvKioskUI();
-                }
-
+                // 1. จัดการฝั่ง NOW SERVING (แสดงคิวที่โดนเรียก + รูปหน้า + เสียง)
                 const serving = queues.filter(q => q.status === 'serving').sort((a,b) => b.callTime - a.callTime);
                 if (serving.length > 0) {
                     const latest = serving[0];
                     const uniqueKey = latest.number + latest.callTime;
                     if (lastAnnounce !== uniqueKey) {
                         lastAnnounce = uniqueKey;
-                        playBeep('normal'); 
-                        setTimeout(() => { speak(`เชิญคิว, ${latest.number},, ที่ช่องบริการ, ${latest.counter} ครับ`); }, 500);
+                        playBeep('alarm'); 
+                        setTimeout(() => { speak(`เชิญคิว, ${latest.number},, ที่ช่องบริการ, ${latest.counter} ค่ะ`); }, 500);
                     }
                 }
                 
-                document.getElementById('tv-serving-list').innerHTML = serving.slice(0, 5).map((q, idx) => {
+                document.getElementById('tv-serving-list').innerHTML = serving.slice(0, 4).map((q, idx) => {
                     const isNew = idx === 0; 
                     return `
                     <div class="${isNew ? 'bg-white text-slate-900 border-l-8 border-emerald-500 animate-pulse-green' : 'bg-slate-700 text-slate-400 border-l-8 border-slate-500'} 
-                        p-4 sm:p-6 rounded-2xl shadow-lg flex justify-between items-center transition-all flex-1">
-                        <div>
-                            <span class="text-xl sm:text-2xl block opacity-70 mb-1 font-semibold">หมายเลขคิว / QUEUE</span>
-                            <span class="text-[4rem] xl:text-[5rem] leading-none font-black tracking-tighter">${q.number}</span>
+                        p-6 rounded-2xl shadow-xl flex items-center justify-between transition-all flex-1">
+                        
+                        <div class="flex items-center gap-6">
+                            <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 ${isNew ? 'border-emerald-500' : 'border-slate-500'} overflow-hidden shadow-inner flex-shrink-0">
+                                ${q.faceImage ? `<img src="${q.faceImage}" class="w-full h-full object-cover transform scale-x-[-1]">` : `<div class="w-full h-full bg-slate-200 flex items-center justify-center"><i class="fa-solid fa-user text-4xl text-slate-400"></i></div>`}
+                            </div>
+                            
+                            <div>
+                                <span class="text-lg sm:text-xl block opacity-70 mb-1 font-semibold">หมายเลขคิว / QUEUE</span>
+                                <span class="text-[3rem] sm:text-[4rem] xl:text-[5rem] leading-none font-black tracking-tighter">${q.number}</span>
+                            </div>
                         </div>
+
                         <div class="text-right">
-                            <span class="text-xl sm:text-2xl block opacity-70 mb-1 font-semibold">ช่องบริการ / COUNTER</span>
-                            <span class="text-[5rem] xl:text-[7rem] leading-none font-black ${isNew ? 'text-blue-600' : 'text-slate-200'}">${q.counter}</span>
+                            <span class="text-lg sm:text-xl block opacity-70 mb-1 font-semibold">ช่องบริการ / COUNTER</span>
+                            <span class="text-[4rem] sm:text-[5rem] xl:text-[7rem] leading-none font-black ${isNew ? 'text-blue-600' : 'text-slate-200'}">${q.counter}</span>
                         </div>
                     </div>`;
                 }).join('');
                 
-                const nextInLine = queues.filter(q => q.status === 'waiting').sort((a,b) => a.timestamp - b.timestamp).slice(0, 1);
-                if (nextInLine.length > 0) {
-                    document.getElementById('tv-waiting-list').innerHTML = nextInLine.map(q => `
-                        <li class="flex items-center gap-6 text-slate-200 bg-slate-700/50 p-4 rounded-xl border border-slate-700 animate-fade-in">
-                            <i class="fa-solid fa-circle text-sm text-yellow-500 animate-pulse"></i>
-                            <span class="font-mono font-black text-6xl tracking-wider">${q.number}</span>
+                // 2. จัดการฝั่งคิวรอ (NEXT) - แสดง 3 ลำดับ
+                const waiting = queues.filter(q => q.status === 'waiting').sort((a,b) => a.timestamp - b.timestamp).slice(0, 3);
+                if (waiting.length > 0) {
+                    document.getElementById('tv-waiting-list').innerHTML = waiting.map(q => `
+                        <li class="flex items-center gap-4 text-slate-200 bg-slate-700/50 p-3 rounded-xl border border-slate-700 animate-fade-in shadow-sm">
+                            <div class="w-12 h-12 rounded-full border-2 border-slate-500 overflow-hidden">
+                                ${q.faceImage ? `<img src="${q.faceImage}" class="w-full h-full object-cover transform scale-x-[-1]">` : `<div class="w-full h-full bg-slate-600"></div>`}
+                            </div>
+                            <span class="font-mono font-black text-4xl tracking-wider text-emerald-400">${q.number}</span>
                         </li>
                     `).join('');
                 } else {
                     document.getElementById('tv-waiting-list').innerHTML = `
-                        <li class="text-slate-500 text-center py-4 border border-dashed border-slate-700 rounded-xl text-sm">
+                        <li class="text-slate-500 text-center py-6 border border-dashed border-slate-700 rounded-xl text-sm font-semibold">
                             ไม่มีคิวรอในขณะนี้
                         </li>
                     `;
@@ -871,20 +621,16 @@
             });
         };
 
-        // ==========================================
-        // 5. GLOBAL SHORTCUT 
-        // ==========================================
-        window.addEventListener('keydown', async (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-            
-            if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'q') {
-                e.preventDefault(); 
-                if (mode === 'kiosk') return; 
-                createNewQueue();
-            }
-        });
+        // เลือกว่าจะรันหน้าอะไร
+        const container = document.getElementById('app');
+        if (mode === 'staff') {
+            document.body.className = "bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col";
+            renderStaff(container);
+        } else {
+            document.body.className = "bg-slate-900 text-white antialiased min-h-screen overflow-hidden flex flex-col";
+            renderTV(container);
+        }
 
-        renderApp();
     </script>
 </body>
 </html>
