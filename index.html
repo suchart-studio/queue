@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;800&display=swap" rel="stylesheet">
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 
     <style>
         body { font-family: 'Sarabun', sans-serif; }
@@ -25,7 +25,6 @@
         }
         .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
         
-        /* กรอบโฟกัสใบหน้าอัจฉริยะครอบเลนส์กล้อง */
         .face-guide {
             position: absolute;
             top: 15%;
@@ -68,10 +67,10 @@
         const db = getDatabase(app);
 
         const params = new URLSearchParams(window.location.search);
-        const mode = params.get('mode') || 'tv';
+        const mode = params.get('mode') || 'tv'; 
 
         // --------------------------------------------------------
-        // ระบบเสียงแจ้งเตือนสากล (Beep & TTS)
+        // ระบบเสียง
         // --------------------------------------------------------
         const playBeep = (type = 'normal') => {
             try {
@@ -115,7 +114,7 @@
         };
 
         // ==========================================
-        // STAFF MODE (หน้าจอฝั่งเจ้าหน้าที่เรียกคิว)
+        // STAFF MODE
         // ==========================================
         const renderStaff = (container) => {
             let currentCounter = 1;
@@ -251,7 +250,7 @@
         };
 
         // ==========================================
-        // TV DISPLAY MODE (ระบบ AI คิวตรวจจับใบหน้าอัตโนมัติ)
+        // TV DISPLAY MODE (อัปเดตใช้ MediaPipe Face Mesh)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
@@ -293,26 +292,26 @@
                                 <div class="inline-block bg-black/70 backdrop-blur-sm px-5 py-2.5 rounded-xl text-white border border-slate-600 shadow-xl">
                                     <i class="fa-solid fa-eye text-2xl text-emerald-400 mb-1 block animate-pulse"></i>
                                     <span class="font-bold text-sm block">กรุณายืนมองกล้อง</span>
-                                    <span class="text-xs text-slate-300">เข้าใกล้และขยับหน้าให้อยู่ในกรอบ</span>
+                                    <span class="text-xs text-slate-300">จัดใบหน้าให้อยู่ภายในกรอบประ</span>
                                 </div>
                             </div>
 
                             <div id="ui-holding" class="hidden absolute inset-0 bg-amber-500/20 flex flex-col items-center justify-center z-30 backdrop-blur-[2px] transition-all">
-                                <span class="text-2xl font-bold text-amber-400 bg-black/80 px-5 py-3 rounded-xl border border-amber-500/50 shadow-xl">
-                                    <i class="fa-solid fa-spinner animate-spin mr-2"></i> กรุณายืนนิ่งๆ 2 วินาที
+                                <span class="text-2xl font-bold text-amber-400 bg-black/70 px-4 py-2 rounded-xl border border-amber-500/50 shadow-xl">
+                                    <i class="fa-solid fa-spinner animate-spin mr-2"></i> กำลังตรวจจับ... นิ่งไว้ค้างไว้ 2 วิ
                                 </span>
                             </div>
 
-                            <div id="ui-countdown" class="hidden absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-40 backdrop-blur-sm">
+                            <div id="ui-countdown" class="hidden absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-40 backdrop-blur-sm">
                                 <span class="text-[9rem] font-black text-emerald-400 leading-none drop-shadow-2xl" id="capture-number">5</span>
-                                <span class="text-white text-xl font-bold mt-2 animate-bounce bg-black/40 px-4 py-1 rounded-full"><i class="fa-solid fa-camera mr-1"></i> เตรียมถ่ายภาพ!</span>
+                                <span class="text-white text-xl font-bold mt-2 animate-bounce bg-black/40 px-4 py-1 rounded-full"><i class="fa-solid fa-camera mr-1"></i> เตรียมถ่ายภาพใบหน้า!</span>
                             </div>
 
                             <div id="ui-ticket" class="hidden absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
                                 <h3 class="text-slate-400 font-bold mb-1 uppercase tracking-widest text-xs">หมายเลขคิวของคุณคือ</h3>
                                 <div id="ticket-q-number" class="text-[5.5rem] font-black text-emerald-400 leading-none mb-3 tracking-tighter drop-shadow-md">A000</div>
                                 
-                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800 flex-shrink-0">
+                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800">
                                     <img id="ticket-face-img" src="" class="w-full h-full object-cover">
                                 </div>
                                 <p class="text-amber-400 font-bold text-lg"><i class="fa-solid fa-volume-high animate-pulse"></i> กรุณาจำหมายเลขคิวของคุณไว้ค่ะ</p>
@@ -383,21 +382,25 @@
                 const faceGuide = document.getElementById('face-guide-overlay');
                 const webcamLoading = document.getElementById('webcam-loading');
 
-                if (typeof FaceDetection === 'undefined' || typeof Camera === 'undefined') {
+                if (typeof FaceMesh === 'undefined' || typeof Camera === 'undefined') {
                     if (webcamLoading) webcamLoading.innerHTML = "ไลบรารี AI ขัดข้อง กรุณารีเฟรชหน้าจอ";
                     return;
                 }
 
                 try {
-                    const faceDetection = new FaceDetection({
-                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
+                    // เปลี่ยนจาก FaceDetection เป็น FaceMesh ที่เสถียรกว่า
+                    const faceMesh = new FaceMesh({
+                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
                     });
 
-                    // ใช้โมเดล 0 (สำหรับระยะใกล้) และลดความแม่นยำลงมาที่ 0.5 เพื่อให้เจอหน้าง่ายขึ้น
-                    faceDetection.setOptions({ modelSelection: 0, minDetectionConfidence: 0.5 });
+                    faceMesh.setOptions({
+                        maxNumFaces: 1,
+                        refineLandmarks: false,
+                        minDetectionConfidence: 0.5,
+                        minTrackingConfidence: 0.5
+                    });
 
-                    faceDetection.onResults((results) => {
-                        // ปิดหน้าจอโหลดเมื่อกล้องเริ่มทำงาน
+                    faceMesh.onResults((results) => {
                         if (webcamLoading && !webcamLoading.classList.contains('hidden')) {
                             webcamLoading.classList.add('hidden');
                         }
@@ -413,22 +416,34 @@
                             canvasCtx.restore(); return; 
                         }
 
-                        if (results.detections && results.detections.length > 0) {
-                            const detection = results.detections[0];
-                            lastFaceBox = detection.boundingBox;
+                        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                            const landmarks = results.multiFaceLandmarks[0];
+                            
+                            // คำนวณ Bounding Box (กรอบใบหน้า) จากจุดต่างๆ
+                            let xMin = 1, yMin = 1, xMax = 0, yMax = 0;
+                            for (const l of landmarks) {
+                                if (l.x < xMin) xMin = l.x;
+                                if (l.y < yMin) yMin = l.y;
+                                if (l.x > xMax) xMax = l.x;
+                                if (l.y > yMax) yMax = l.y;
+                            }
+                            const width = xMax - xMin;
+                            const height = yMax - yMin;
+                            
+                            lastFaceBox = { xMin, yMin, width, height };
 
-                            // [เสริมการรับรู้] วาดกรอบสี่เหลี่ยมสีเขียวครอบหน้า เพื่อให้รู้ว่ากล้องจับได้แล้ว
+                            // วาดกรอบสี่เหลี่ยมสีเขียวบอกตำแหน่งให้รู้ว่า AI จับหน้าได้แล้ว
                             canvasCtx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
                             canvasCtx.lineWidth = 4;
                             canvasCtx.strokeRect(
-                                lastFaceBox.xMin * canvasEl.width, 
-                                lastFaceBox.yMin * canvasEl.height, 
-                                lastFaceBox.width * canvasEl.width, 
-                                lastFaceBox.height * canvasEl.height
+                                xMin * canvasEl.width, 
+                                yMin * canvasEl.height, 
+                                width * canvasEl.width, 
+                                height * canvasEl.height
                             );
 
-                            // เงื่อนไขใหม่: แค่ใบหน้ามีขนาดใหญ่กว่า 15% ของความกว้างกล้องก็ถือว่าเข้าโซนแล้ว
-                            const isFaceLargeEnough = lastFaceBox.width > 0.15;
+                            // เงื่อนไข: หน้าต้องมีขนาดใหญ่พอ (อย่างน้อย 15% ของความกว้างจอ)
+                            const isFaceLargeEnough = width > 0.15;
 
                             if (cameraState === 'WAITING_FOR_FACE') {
                                 if (isFaceLargeEnough) {
@@ -442,7 +457,6 @@
                             } else if (cameraState === 'HOLDING_FACE') {
                                 if (isFaceLargeEnough) {
                                     const totalElapsed = Date.now() - faceDetectedStartTime;
-                                    // นับค้าง 2 วิ
                                     if (totalElapsed >= 2000) {
                                         startCaptureCountdown(videoEl);
                                     }
@@ -457,7 +471,7 @@
                     });
 
                     const camera = new Camera(videoEl, {
-                        onFrame: async () => { await faceDetection.send({image: videoEl}); },
+                        onFrame: async () => { await faceMesh.send({image: videoEl}); },
                         width: 480, height: 640
                     });
                     camera.start();
