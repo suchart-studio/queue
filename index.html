@@ -250,7 +250,7 @@
         };
 
         // ==========================================
-        // TV DISPLAY MODE 
+        // TV DISPLAY MODE
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
@@ -298,20 +298,20 @@
 
                             <div id="ui-holding" class="hidden absolute inset-0 bg-amber-500/20 flex flex-col items-center justify-center z-30 backdrop-blur-[2px] transition-all">
                                 <span class="text-2xl font-bold text-amber-400 bg-black/70 px-4 py-2 rounded-xl border border-amber-500/50 shadow-xl">
-                                    <i class="fa-solid fa-spinner animate-spin mr-2"></i> กำลังตรวจจับ... นิ่งไว้ค้างไว้ 2 วิ
+                                    <i class="fa-solid fa-spinner animate-spin mr-2"></i> หน้านิ่งค้างไว้ <span id="holding-sec">2</span> วิ...
                                 </span>
                             </div>
 
                             <div id="ui-countdown" class="hidden absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-40 backdrop-blur-sm">
                                 <span class="text-[9rem] font-black text-emerald-400 leading-none drop-shadow-2xl" id="capture-number">5</span>
-                                <span class="text-white text-xl font-bold mt-2 animate-bounce bg-black/40 px-4 py-1 rounded-full"><i class="fa-solid fa-camera mr-1"></i> เตรียมถ่ายภาพใบหน้า!</span>
+                                <span class="text-white text-xl font-bold mt-2 animate-bounce bg-black/40 px-4 py-1 rounded-full"><i class="fa-solid fa-camera mr-1"></i> กรุณามองกล้อง</span>
                             </div>
 
                             <div id="ui-ticket" class="hidden absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
                                 <h3 class="text-slate-400 font-bold mb-1 uppercase tracking-widest text-xs">หมายเลขคิวของคุณคือ</h3>
                                 <div id="ticket-q-number" class="text-[5.5rem] font-black text-emerald-400 leading-none mb-3 tracking-tighter drop-shadow-md">A000</div>
                                 
-                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800 flex-shrink-0">
+                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800">
                                     <img id="ticket-face-img" src="" class="w-full h-full object-cover">
                                 </div>
                                 <p class="text-amber-400 font-bold text-lg"><i class="fa-solid fa-volume-high animate-pulse"></i> กรุณาจำหมายเลขคิวของคุณไว้</p>
@@ -386,6 +386,7 @@
                 
                 const uiInstruction = document.getElementById('ui-instruction');
                 const uiHolding = document.getElementById('ui-holding');
+                const holdingSecEl = document.getElementById('holding-sec');
                 const faceGuide = document.getElementById('face-guide-overlay');
                 const webcamLoading = document.getElementById('webcam-loading');
 
@@ -431,6 +432,8 @@
                             }
                             const width = xMax - xMin;
                             const height = yMax - yMin;
+                            const xCenter = xMin + (width / 2);
+                            const yCenter = yMin + (height / 2);
                             
                             lastFaceBox = { xMin, yMin, width, height };
 
@@ -443,10 +446,13 @@
                                 height * canvasEl.height
                             );
 
+                            // เงื่อนไข: หน้าต้องใหญ่พอ และอยู่ค่อนข้างตรงกลางกรอบ
                             const isFaceLargeEnough = width > 0.15;
+                            const isFaceCentered = (xCenter > 0.3 && xCenter < 0.7 && yCenter > 0.2 && yCenter < 0.8);
+                            const isFaceReady = isFaceLargeEnough && isFaceCentered;
 
                             if (cameraState === 'WAITING_FOR_FACE') {
-                                if (isFaceLargeEnough) {
+                                if (isFaceReady) {
                                     cameraState = 'HOLDING_FACE';
                                     faceDetectedStartTime = Date.now();
                                     
@@ -455,8 +461,13 @@
                                     faceGuide.style.borderColor = '#fbbf24'; 
                                 }
                             } else if (cameraState === 'HOLDING_FACE') {
-                                if (isFaceLargeEnough) {
+                                if (isFaceReady) {
                                     const totalElapsed = Date.now() - faceDetectedStartTime;
+                                    const remaining = Math.ceil((2000 - totalElapsed) / 1000);
+                                    
+                                    // อัปเดตตัวเลข 2.. 1.. ให้เห็นว่ากำลังจับเวลา
+                                    if (holdingSecEl) holdingSecEl.innerText = Math.max(1, remaining);
+
                                     if (totalElapsed >= 2000) {
                                         startCaptureCountdown(videoEl);
                                     }
@@ -488,7 +499,8 @@
                 document.getElementById('face-guide-overlay').style.borderColor = '#10b981'; 
                 document.getElementById('capture-number').innerText = currentSec;
                 
-                speak("เตรียมถ่ายภาพในอีก 5 วินาที"); // ไม่ลบเพราะไม่มีคำลงท้ายอยู่แล้ว
+                // ประกาศเสียงตามบรีฟ 
+                speak("เตรียมถ่ายภาพในอีก 5 วินาที กรุณามองกล้อง");
 
                 countdownInterval = setInterval(async () => {
                     currentSec--;
@@ -535,7 +547,6 @@
                 document.getElementById('ticket-q-number').innerText = qNumber;
                 document.getElementById('ticket-face-img').src = faceImgBase64;
                 
-                // เอาคำว่า "ค่ะ" ออกจากเสียงประกาศตามบรีฟ
                 speak(`หมายเลขคิวของคุณคือ ${qNumber} กรุณาจำหมายเลขคิวของคุณไว้`);
 
                 let displayTimeLeft = 10;
@@ -591,7 +602,6 @@
                         lastAnnounce = uniqueKey;
                         playBeep('alarm'); 
                         setTimeout(() => { 
-                            // เอาคำว่า "ค่ะ" ออกจากเสียงเรียกคิว
                             speak(`ขอเชิญหมายเลขคิว, ${currentServingQ.number}, ที่ช่องบริการหมายเลข, ${currentServingQ.counter}`); 
                         }, 500);
                     }
