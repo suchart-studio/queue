@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Smart Face Queue System</title>
+    <title>Smart Face-Detection Queue System</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;800&display=swap" rel="stylesheet">
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
 
     <style>
         body { font-family: 'Sarabun', sans-serif; }
@@ -26,23 +25,24 @@
         }
         .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
         
-        /* กรอบโฟกัสใบหน้าสำหรับถ่ายรูป */
+        /* กรอบโฟกัสใบหน้าอัจฉริยะครอบเลนส์กล้อง */
         .face-guide {
             position: absolute;
             top: 15%;
             left: 50%;
             transform: translateX(-50%);
-            width: 200px;
-            height: 240px;
-            border: 3px dashed rgba(255, 255, 255, 0.5);
-            border-radius: 100px; /* ทรงวงรีคล้ายใบหน้า */
+            width: 220px;
+            height: 270px;
+            border: 4px dashed rgba(255, 255, 255, 0.6);
+            border-radius: 50% / 45%;
             pointer-events: none;
             z-index: 15;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.5); /* ม่านบังแสงรอบกรอบโฟกัส */
+            transition: border-color 0.3s ease;
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
+<body class="bg-gray-100 text-gray-800 overflow-hidden">
 
     <div id="app"></div>
 
@@ -52,7 +52,7 @@
         from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         // ==========================================
-        // --- CONFIG ---
+        // --- CONFIG CONNECTION FIREBASE ---
         // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyDGYuI3yxJbUTc6T_0pm6WiEKZul11tXS0",
@@ -68,10 +68,10 @@
         const db = getDatabase(app);
 
         const params = new URLSearchParams(window.location.search);
-        const mode = params.get('mode') || 'tv'; // Default เป็น TV
+        const mode = params.get('mode') || 'tv'; // ค่าเริ่มต้นคือหน้าจอ TV
 
         // --------------------------------------------------------
-        // ระบบเสียง (Beep & TTS)
+        // ระบบเสียงแจ้งเตือนสากล (Beep & TTS)
         // --------------------------------------------------------
         const playBeep = (type = 'normal') => {
             try {
@@ -79,37 +79,43 @@
                 if (!AudioContext) return;
                 const ctx = new AudioContext();
                 const now = ctx.currentTime;
-
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
+                
                 osc.connect(gain);
                 gain.connect(ctx.destination);
                 
-                osc.type = 'sine';
-                osc.frequency.value = 660; 
-                gain.gain.setValueAtTime(0.1, now); 
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-                
-                osc.start(now);
-                osc.stop(now + 0.3);
+                if (type === 'snap') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(800, now);
+                    osc.frequency.exponentialRampToValueAtTime(150, now + 0.15);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                    osc.start(now); osc.stop(now + 0.15);
+                } else {
+                    osc.type = 'sine';
+                    osc.frequency.value = 660; 
+                    gain.gain.setValueAtTime(0.1, now); 
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                    osc.start(now); osc.stop(now + 0.2);
+                }
             } catch (e) { console.error("Audio Error", e); }
         };
 
         const speak = (text) => {
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'th-TH'; utterance.rate = 0.9;
+            utterance.lang = 'th-TH'; utterance.rate = 0.95;
             
             const voices = window.speechSynthesis.getVoices();
-            const maleVoice = voices.find(v => v.lang.includes('th') && (v.name.includes('Male') || v.name.includes('Niwat') || v.name.includes('Pattara')));
-            if (maleVoice) utterance.voice = maleVoice;
-            else { const anyThai = voices.find(v => v.lang.includes('th')); if(anyThai) utterance.voice = anyThai; }
+            const thaiVoice = voices.find(v => v.lang.includes('th'));
+            if (thaiVoice) utterance.voice = thaiVoice;
 
             window.speechSynthesis.speak(utterance);
         };
 
         // ==========================================
-        // STAFF MODE (เจ้าหน้าที่)
+        // STAFF MODE (หน้าจอฝั่งเจ้าหน้าที่เรียกคิว)
         // ==========================================
         const renderStaff = (container) => {
             let currentCounter = 1;
@@ -142,11 +148,11 @@
             };
 
             container.innerHTML = `
-                <div class="min-h-screen bg-slate-100 p-4 md:p-8">
+                <div class="min-h-screen bg-slate-100 p-4 md:p-8 select-none">
                     <div class="max-w-4xl mx-auto">
                         <div class="bg-white p-4 rounded-xl shadow-sm mb-6 flex justify-between items-center">
                             <h1 class="text-xl font-bold text-slate-700"><i class="fa-solid fa-user-tie"></i> Staff Console</h1>
-                            <button id="btn-reset" class="text-xs text-red-500 hover:underline"><i class="fa-solid fa-trash"></i> ล้างคิวทั้งหมด</button>
+                            <button id="btn-reset" class="text-xs text-red-500 hover:underline"><i class="fa-solid fa-trash"></i> ล้างข้อมูลคิวทั้งหมด</button>
                         </div>
                         <div class="bg-white p-4 rounded-xl shadow-sm mb-6">
                             <p class="text-sm text-slate-500 mb-3 font-semibold"><i class="fa-solid fa-desktop"></i> เลือกช่องบริการ:</p>
@@ -169,7 +175,7 @@
                             <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-green-500 flex flex-col">
                                 <div class="flex justify-between items-end mb-4">
                                     <div>
-                                        <h2 class="text-gray-400 text-sm uppercase">คิวรอ</h2>
+                                        <h2 class="text-gray-400 text-sm uppercase">คิวรอรับบริการ</h2>
                                         <div class="text-3xl font-bold" id="staff-wait-count">0</div>
                                     </div>
                                     <button id="btn-call" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg active:scale-95 transition">
@@ -210,12 +216,12 @@
                 const waiting = queues.filter(q => q.status === 'waiting').sort((a,b) => a.timestamp - b.timestamp);
                 document.getElementById('staff-wait-count').innerText = waiting.length;
                 document.getElementById('staff-wait-list').innerHTML = waiting.map(q => 
-                    `<li class="flex justify-between items-center p-2 bg-white rounded shadow-sm border border-slate-100">
+                    `<li class="flex justify-between items-center p-2 bg-white rounded shadow-sm border border-slate-100 animate-fade-in">
                         <div class="flex items-center gap-3">
-                            ${q.faceImage ? `<img src="${q.faceImage}" class="w-8 h-8 rounded-full object-cover shadow">` : `<div class="w-8 h-8 rounded-full bg-slate-200"></div>`}
+                            ${q.faceImage ? `<img src="${q.faceImage}" class="w-9 h-9 rounded-full object-cover shadow border border-slate-200">` : `<div class="w-9 h-9 rounded-full bg-slate-200"></div>`}
                             <span class="font-bold text-slate-700">${q.number}</span>
                         </div>
-                        <span class="text-gray-400 text-xs">${new Date(q.timestamp).toLocaleTimeString()}</span>
+                        <span class="text-gray-400 text-xs">${new Date(q.timestamp).toLocaleTimeString('th-TH',{hour:'2-digit', minute:'2-digit'})}</span>
                      </li>`
                 ).join('');
             };
@@ -233,9 +239,7 @@
             
             onValue(ref(db, 'queues'), (snap) => updateUI(snap.val()));
 
-            // Keyboard shortcut สำหรับเปลี่ยนช่องบริการ 1-0
             window.addEventListener('keydown', (e) => {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
                 const keyMap = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '0': 10 };
                 if (keyMap[e.key]) {
                     currentCounter = keyMap[e.key];
@@ -246,21 +250,22 @@
         };
 
         // ==========================================
-        // TV DISPLAY MODE (ระบบ AI Face & Queue)
+        // TV DISPLAY MODE (ระบบ AI คิวตรวจจับใบหน้าอัตโนมัติ)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
-            let cameraState = 'WAITING_FOR_POSE'; // WAITING_FOR_POSE, HOLDING, COUNTDOWN, SHOWING_TICKET
-            let poseStartTime = 0;
+            let cameraState = 'WAITING_FOR_FACE'; // WAITING_FOR_FACE, HOLDING_FACE, COUNTDOWN, SHOWING_TICKET
+            let faceDetectedStartTime = 0;
             let countdownInterval = null;
             let ticketTimer = null;
+            let lastFaceBox = null; // เก็บพิกัดใบหน้าล่าสุดเพื่อนำไปครอปซูมหัว
 
             container.innerHTML = `
-                <div class="relative w-screen h-screen bg-slate-900 text-white overflow-hidden flex">
+                <div class="relative w-screen h-screen bg-slate-900 text-white overflow-hidden flex select-none">
                     <div id="sound-overlay" class="absolute inset-0 bg-black/95 z-50 flex items-center justify-center cursor-pointer">
                         <div class="text-center">
                             <i class="fa-solid fa-volume-high text-6xl mb-4 text-emerald-400 animate-bounce"></i>
-                            <h2 class="text-2xl font-bold">คลิกที่นี่เพื่อเปิดใช้งานหน้าจอแสดงผล</h2>
+                            <h2 class="text-2xl font-bold">คลิกที่นี่เพื่อเริ่มต้นเปิดใช้งานระบบแสดงผล</h2>
                         </div>
                     </div>
                     
@@ -270,11 +275,10 @@
                     </div>
                     
                     <div class="w-1/3 p-8 flex flex-col shadow-2xl justify-between bg-slate-800 relative">
-                        
-                        <div class="mb-2">
-                            <h2 class="text-2xl font-bold text-slate-400 flex items-center justify-between">
-                                รับคิวอัตโนมัติ 
-                                <i class="fa-solid fa-camera text-emerald-500 animate-pulse text-lg"></i>
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-400 mb-4 flex items-center justify-between">
+                                ตู้รับคิวอัตโนมัติด้วยใบหน้า
+                                <i class="fa-solid fa-circle-user text-emerald-500 text-xl animate-pulse"></i>
                             </h2>
                         </div>
                         
@@ -285,224 +289,223 @@
                             <div class="face-guide" id="face-guide-overlay"></div>
                             
                             <div id="ui-instruction" class="absolute bottom-6 left-0 w-full text-center z-20">
-                                <div class="inline-block bg-black/70 backdrop-blur-sm px-4 py-2 rounded-xl text-white border border-slate-600 shadow-xl">
-                                    <i class="fa-solid fa-hand-peace text-3xl text-emerald-400 mb-1 block"></i>
-                                    <span class="font-bold text-sm">มองกล้อง & ชูสองนิ้วค้างไว้</span>
+                                <div class="inline-block bg-black/70 backdrop-blur-sm px-5 py-2.5 rounded-xl text-white border border-slate-600 shadow-xl">
+                                    <i class="fa-solid fa-eye text-2xl text-emerald-400 mb-1 block animate-pulse"></i>
+                                    <span class="font-bold text-sm block">กรุณายืนมองกล้อง</span>
+                                    <span class="text-xs text-slate-300">จัดใบหน้าให้อยู่ภายในกรอบประ</span>
                                 </div>
                             </div>
 
-                            <div id="ui-holding" class="hidden absolute inset-0 bg-amber-500/30 flex flex-col items-center justify-center z-30 backdrop-blur-sm transition-all">
-                                <span class="text-[10rem] font-black text-white leading-none drop-shadow-[0_10px_10px_rgba(0,0,0,0.8)]" id="hold-number">3</span>
-                                <span class="text-white text-xl font-bold mt-2 animate-pulse bg-black/50 px-4 py-1 rounded-full">ค้างไว้...</span>
+                            <div id="ui-holding" class="hidden absolute inset-0 bg-amber-500/20 flex flex-col items-center justify-center z-30 backdrop-blur-[2px] transition-all">
+                                <span class="text-2xl font-bold text-amber-400 bg-black/70 px-4 py-2 rounded-xl border border-amber-500/50 shadow-xl">
+                                    <i class="fa-solid fa-spinner animate-spin mr-2"></i> กำลังตรวจจับ... นิ่งไว้ค้างไว้ 2 วิ
+                                </span>
                             </div>
 
-                            <div id="ui-countdown" class="hidden absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-40 backdrop-blur-md">
-                                <span class="text-[8rem] font-black text-emerald-400 leading-none drop-shadow-2xl" id="capture-number">5</span>
-                                <span class="text-white text-2xl font-bold mt-4 animate-bounce"><i class="fa-solid fa-camera"></i> เตรียมถ่ายภาพ!</span>
+                            <div id="ui-countdown" class="hidden absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-40 backdrop-blur-sm">
+                                <span class="text-[9rem] font-black text-emerald-400 leading-none drop-shadow-2xl" id="capture-number">5</span>
+                                <span class="text-white text-xl font-bold mt-2 animate-bounce bg-black/40 px-4 py-1 rounded-full"><i class="fa-solid fa-camera mr-1"></i> เตรียมถ่ายภาพใบหน้าของคุณ!</span>
                             </div>
 
                             <div id="ui-ticket" class="hidden absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
-                                <h3 class="text-slate-400 font-bold mb-2 uppercase tracking-widest text-sm">หมายเลขคิวของคุณ</h3>
-                                <div id="ticket-q-number" class="text-[6rem] font-black text-emerald-400 leading-none mb-4 tracking-tighter drop-shadow-lg">AXXX</div>
-                                <div class="w-40 h-40 rounded-full border-4 border-white overflow-hidden shadow-2xl mb-4">
-                                    <img id="ticket-face-img" src="" class="w-full h-full object-cover transform scale-x-[-1]">
+                                <h3 class="text-slate-400 font-bold mb-1 uppercase tracking-widest text-xs">หมายเลขคิวของคุณคือ</h3>
+                                <div id="ticket-q-number" class="text-[5.5rem] font-black text-emerald-400 leading-none mb-3 tracking-tighter drop-shadow-md">A000</div>
+                                
+                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800">
+                                    <img id="ticket-face-img" src="" class="w-full h-full object-cover">
                                 </div>
-                                <p class="text-amber-400 font-bold text-lg"><i class="fa-solid fa-volume-high"></i> กรุณาจำหมายเลขคิวไว้ค่ะ</p>
-                                <p class="text-slate-500 text-xs mt-2">(หน้าต่างจะปิดใน <span id="ticket-close-sec">10</span> วินาที)</p>
+                                <p class="text-amber-400 font-bold text-lg"><i class="fa-solid fa-volume-high animate-pulse"></i> กรุณาจำหมายเลขคิวของคุณไว้ค่ะ</p>
+                                <p class="text-slate-500 text-[11px] mt-3">(ระบบจะเริ่มใหม่ในอีก <span id="ticket-close-sec" class="font-bold text-slate-300">10</span> วินาที)</p>
                             </div>
-
                         </div>
 
-                        <div class="mt-6 flex-1 flex flex-col">
-                            <h2 class="text-lg font-bold text-slate-400 mb-3 border-b border-slate-700 pb-2">คิวที่รอ (NEXT)</h2>
-                            <ul id="tv-waiting-list" class="space-y-3"></ul>
+                        <div class="mt-6 flex-1 flex flex-col justify-end">
+                            <h2 class="text-lg font-bold text-slate-400 mb-2 border-b border-slate-700 pb-2">คิวรอถัดไป (NEXT)</h2>
+                            <ul id="tv-waiting-list" class="space-y-2"></ul>
                         </div>
                     </div>
                 </div>
             `;
             
-            // ฟังก์ชันถ่ายภาพและครอปเฉพาะบริเวณกรอบวงรี (Face Guide)
+            // ฟังก์ชันซูมครอปเฉพาะส่วนหัวและใบหน้าอ้างอิงตามพิกัดที่ AI ตรวจจับได้จริง
             const captureFaceImage = (videoEl) => {
                 const canvas = document.createElement('canvas');
-                // ตั้งขนาดภาพที่จะบันทึกให้เป็นสี่เหลี่ยมจัตุรัสเพื่อให้แสดงผลในวงกลมได้สวยงาม
-                const size = 300; 
+                const size = 320; 
                 canvas.width = size;
                 canvas.height = size;
                 const ctx = canvas.getContext('2d');
                 
-                // คำนวณตำแหน่ง X, Y จากวิดีโอ (อ้างอิงตำแหน่ง .face-guide top 15%, center)
                 const vw = videoEl.videoWidth;
                 const vh = videoEl.videoHeight;
                 
-                // คำนวณกล่องครอปแบบคร่าวๆ ให้อยู่กลางค่อนไปด้านบน
-                const cropWidth = Math.min(vw, vh) * 0.7; // ความกว้างของการครอป
-                const startX = (vw - cropWidth) / 2;
-                const startY = vh * 0.1; // ขยับลงมา 10% จากด้านบน
+                let sx, sy, sWidth, sHeight;
+
+                if (lastFaceBox) {
+                    // แปลงพิกัดสัดส่วนเปอร์เซ็นต์ (0-1) ให้เป็นหน่วยพิกเซลจริงของตัวกล้อง
+                    const fX = lastFaceBox.xMin * vw;
+                    const fY = lastFaceBox.yMin * vh;
+                    const fW = lastFaceBox.width * vw;
+                    const fH = lastFaceBox.height * vh;
+
+                    // ปรับรัศมีการขยายกรอบครอป (Padding) รอบใบหน้าเพื่อให้ได้ส่วนหัวที่สวยงาม ไม่ขาดช่วงทรงผม
+                    const padX = fW * 0.45;
+                    const padY = fH * 0.6;
+
+                    sx = Math.max(0, fX - padX);
+                    sy = Math.max(0, fY - padY * 1.2); // เผื่อขอบด้านบนขึ้นไปถึงเส้นผม
+                    sWidth = Math.min(vw - sx, fW + padX * 2);
+                    sHeight = Math.min(vh - sy, fH + padY * 2.5);
+
+                    // ทำกรอบภาพให้เป็น 1:1 จัตุรัสเสมอ
+                    const finalDim = Math.max(sWidth, sHeight);
+                    sWidth = finalDim; sHeight = finalDim;
+                } else {
+                    // แผนสำรองกรณีหาพิกัดไม่เจอ ให้ตัดภาพกึ่งกลางสัดส่วนตรงกรอบพอดี
+                    sWidth = Math.min(vw, vh) * 0.6; sHeight = sWidth;
+                    sx = (vw - sWidth) / 2; sy = vh * 0.15;
+                }
                 
-                // วาดภาพจากวีดีโอลง Canvas พร้อมกลับด้าน (Mirror) เพื่อให้เหมือนกระจก
+                // สลับฝั่งด้านซ้าย-ขวา เพื่อให้รูปภาพที่เก็บได้ไม่กลับฝั่งหลอกตาผู้ใช้งาน
                 ctx.translate(size, 0);
                 ctx.scale(-1, 1);
-                ctx.drawImage(videoEl, startX, startY, cropWidth, cropWidth, 0, 0, size, size);
+                ctx.drawImage(videoEl, sx, sy, sWidth, sHeight, 0, 0, size, size);
                 
-                return canvas.toDataURL('image/jpeg', 0.6); // บีบอัด 60% เพื่อลดภาระ Firebase
+                return canvas.toDataURL('image/jpeg', 0.65); // บีบอัดไฟล์ 65% ส่งเข้าฐานข้อมูลขนาดเบาตัว
             };
 
-            // เริ่มต้นระบบ AI
+            // รันการทำงานระดมกล้องเว็บแคมเข้าสู่ระบบ MediaPipe AI Face Detection
             const startWebcamWithAI = async () => {
                 const videoEl = document.getElementById('tv-webcam');
                 const canvasEl = document.getElementById('tv-canvas');
                 const canvasCtx = canvasEl.getContext('2d');
                 
-                // UI Elements
                 const uiInstruction = document.getElementById('ui-instruction');
                 const uiHolding = document.getElementById('ui-holding');
-                const holdNumber = document.getElementById('hold-number');
                 const uiCountdown = document.getElementById('ui-countdown');
-                const captureNumber = document.getElementById('capture-number');
-                const uiTicket = document.getElementById('ui-ticket');
                 const faceGuide = document.getElementById('face-guide-overlay');
 
-                if (typeof Hands === 'undefined' || typeof Camera === 'undefined' || typeof drawConnectors === 'undefined') {
-                    console.error("MediaPipe ไม่พร้อมใช้งาน");
+                if (typeof FaceDetection === 'undefined' || typeof Camera === 'undefined') {
+                    console.error("ไลบรารี MediaPipe Face ตรวจจับใบหน้าไม่สมบูรณ์");
                     return;
                 }
 
                 try {
-                    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-                    hands.setOptions({
-                        maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7
+                    const faceDetection = new FaceDetection({
+                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
                     });
 
-                    hands.onResults((results) => {
-                        // ตั้งค่า Canvas ให้ตรงกับวิดีโอ
+                    faceDetection.setOptions({ model: 'short', minDetectionConfidence: 0.6 });
+
+                    faceDetection.onResults((results) => {
                         canvasEl.width = videoEl.videoWidth;
                         canvasEl.height = videoEl.videoHeight;
                         canvasCtx.save();
                         canvasCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
                         
-                        // วาดภาพวิดีโอลง Canvas
+                        // วาดภาพสตรีมกล้องสดลงไปบนผิว Canvas
                         canvasCtx.drawImage(results.image, 0, 0, canvasEl.width, canvasEl.height);
 
-                        // ถ้าระบบกำลังอยู่ในสถานะแสดงตั๋วคิว หรือ นับถอยหลังถ่ายรูป จะซ่อนเส้นมือ
+                        // ถ้าอยู่ในกระบวนการล็อกตั๋วคิว/หรือถ่ายรูปเสร็จแล้ว จะหยุดการประมวลผลตำแหน่งซ้ำซ้อนชั่วคราว
                         if (cameraState === 'SHOWING_TICKET' || cameraState === 'COUNTDOWN') {
-                            canvasCtx.restore();
-                            return; 
+                            canvasCtx.restore(); return; 
                         }
 
-                        // วาดเส้นมือ (Landmarks)
-                        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                            const landmarks = results.multiHandLandmarks[0];
-                            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#10b981', lineWidth: 4});
-                            drawLandmarks(canvasCtx, landmarks, {color: '#ffffff', lineWidth: 2, radius: 4});
+                        if (results.detections && results.detections.length > 0) {
+                            const detection = results.detections[0];
+                            lastFaceBox = detection.boundingBox;
 
-                            // เช็คการทำมือ 2 นิ้ว ✌️
-                            const isIndexUp = landmarks[8].y < landmarks[6].y;
-                            const isMiddleUp = landmarks[12].y < landmarks[10].y;
-                            const isRingFolded = landmarks[16].y > landmarks[14].y;
-                            const isPinkyFolded = landmarks[20].y > landmarks[18].y;
-                            
-                            // นิ้วโป้ง (4) พับเก็บเข้าใน (x เข้าหาศูนย์กลาง) - เพื่อป้องกันความผิดพลาด
-                            // แต่เพื่อความลื่นไหล จะเช็คแค่นิ้วหลัก 4 นิ้วก็เพียงพอ
-                            
-                            const isPeaceSign = isIndexUp && isMiddleUp && isRingFolded && isPinkyFolded;
+                            // คำนวณจุดกึ่งกลางของพิกัดใบหน้า (Normalized 0 - 1)
+                            const xCenter = lastFaceBox.xMin + (lastFaceBox.width / 2);
+                            const yCenter = lastFaceBox.yMin + (lastFaceBox.height / 2);
 
-                            if (cameraState === 'WAITING_FOR_POSE' || cameraState === 'HOLDING') {
-                                if (isPeaceSign) {
-                                    if (cameraState === 'WAITING_FOR_POSE') {
-                                        // เปลี่ยนสถานะเป็น HOLDING
-                                        cameraState = 'HOLDING';
-                                        poseStartTime = Date.now();
+                            // กรองเช็คว่า ใบหน้าตรงอยู่กึ่งกลางช่วงกรอบวงรีประที่ตั้งไว้หรือไม่
+                            const isFaceInZone = (xCenter > 0.35 && xCenter < 0.65 && yCenter > 0.15 && yCenter < 0.65 && lastFaceBox.width > 0.12);
+
+                            if (cameraState === 'WAITING_FOR_FACE' || cameraState === 'HOLDING_FACE') {
+                                if (isFaceInZone) {
+                                    if (cameraState === 'WAITING_FOR_FACE') {
+                                        cameraState = 'HOLDING_FACE';
+                                        faceDetectedStartTime = Date.now();
                                         
                                         uiInstruction.classList.add('hidden');
                                         uiHolding.classList.remove('hidden');
-                                        faceGuide.style.borderColor = '#fbbf24'; // เปลี่ยนกรอบเป็นสีเหลือง
-                                    } 
-                                    else if (cameraState === 'HOLDING') {
-                                        const elapsed = Date.now() - poseStartTime;
-                                        const HOLD_TIME = 3000;
-                                        const timeLeft = Math.ceil((HOLD_TIME - elapsed) / 1000);
-                                        
-                                        if (elapsed >= HOLD_TIME) {
-                                            // ล็อกเป้าสำเร็จ เริ่มกระบวนการนับถอยหลัง 5 วิ
+                                        faceGuide.style.borderColor = '#fbbf24'; // เปลี่ยนเส้นกรอบเป็นสีเหลืองเพื่อบอกให้ผู้ใช้รู้ตัว
+                                    } else if (cameraState === 'HOLDING_FACE') {
+                                        const totalElapsed = Date.now() - faceDetectedStartTime;
+                                        // ถ้านิ่งแช่ครบ 2 วินาที (2000 มิลลิวินาที) ให้ก้าวไปสู่ขั้นนับถอยหลัง
+                                        if (totalElapsed >= 2000) {
                                             startCaptureCountdown(videoEl);
-                                        } else {
-                                            holdNumber.innerText = timeLeft.toString();
                                         }
                                     }
                                 } else {
-                                    // ทำท่าผิด หรือเอามือลง รีเซ็ตกลับไปรอ
-                                    resetToWaiting(false);
+                                    resetToWaiting();
                                 }
                             }
                         } else {
-                            // ไม่มีมือในกล้อง
-                            if (cameraState === 'HOLDING') resetToWaiting(false);
+                            if (cameraState === 'HOLDING_FACE') resetToWaiting();
                         }
                         canvasCtx.restore();
                     });
 
                     const camera = new Camera(videoEl, {
-                        onFrame: async () => { await hands.send({image: videoEl}); },
-                        width: 480, height: 640 // Portrait ratio
+                        onFrame: async () => { await faceDetection.send({image: videoEl}); },
+                        width: 480, height: 640
                     });
                     camera.start();
 
-                } catch (err) {
-                    console.error("Camera Init Error", err);
-                }
+                } catch (err) { console.error("ไม่สามารถเริ่มตรวจจับกล้องใบหน้าได้", err); }
             };
 
-            // ฟังก์ชันนับถอยหลัง 5 วินาที เพื่อถ่ายภาพ
+            // ระบบนับถอยหลัง 5 วินาทีก่อนลั่นชัตเตอร์กล้องถ่ายสแนปช็อต
             const startCaptureCountdown = (videoEl) => {
                 cameraState = 'COUNTDOWN';
-                let timeLeft = 5;
+                let currentSec = 5;
                 
-                // จัดการ UI
                 document.getElementById('ui-holding').classList.add('hidden');
                 document.getElementById('ui-countdown').classList.remove('hidden');
-                document.getElementById('face-guide-overlay').style.borderColor = '#10b981'; // กรอบสีเขียว
-                document.getElementById('capture-number').innerText = timeLeft;
+                document.getElementById('face-guide-overlay').style.borderColor = '#10b981'; // เปล่งกรอบแสงสีเขียว
+                document.getElementById('capture-number').innerText = currentSec;
                 
-                speak("เตรียมถ่ายภาพ ในอีก 5 วินาที");
+                speak("ตรวจพบใบหน้าเรียบร้อยค่ะ เตรียมถ่ายภาพในอีก 5 วินาที");
 
                 countdownInterval = setInterval(async () => {
-                    timeLeft--;
-                    if (timeLeft > 0) {
-                        document.getElementById('capture-number').innerText = timeLeft;
-                        // เสียงติ๊กๆ 
+                    currentSec--;
+                    if (currentSec > 0) {
+                        document.getElementById('capture-number').innerText = currentSec;
                         playBeep('normal');
                     } else {
                         clearInterval(countdownInterval);
                         
-                        // แฟลชหน้าจอขาว 1 ทีจำลองการถ่ายภาพ
-                        const flash = document.createElement('div');
-                        flash.className = "absolute inset-0 bg-white z-50 animate-pulse";
-                        document.getElementById('ui-countdown').appendChild(flash);
-                        playBeep('alarm'); // เสียงแชะ!
+                        // เอฟเฟกต์แสงแฟลชสีขาวจำลองการกดถ่ายภาพชัตเตอร์
+                        const flashEl = document.createElement('div');
+                        flashEl.className = "absolute inset-0 bg-white z-50 animate-pulse";
+                        document.getElementById('ui-countdown').appendChild(flashEl);
+                        playBeep('snap');
                         
-                        // ถ่ายภาพและบันทึก
-                        const faceBase64 = captureFaceImage(videoEl);
+                        // ถ่ายภาพครอปใบหน้าซูมส่วนหัว
+                        const base64Photo = captureFaceImage(videoEl);
                         
-                        // สร้างคิว
-                        const qRef = push(ref(db, 'queues'));
-                        const qNum = "A" + Math.floor(100 + Math.random() * 900);
-                        await set(qRef, { 
-                            number: qNum, 
+                        // อัปโหลดข้อมูลคิวใหม่ขึ้นสู่ระบบ Firebase Realtime Database
+                        const queueRef = push(ref(db, 'queues'));
+                        const generatedQNumber = "A" + Math.floor(100 + Math.random() * 900);
+                        
+                        await set(queueRef, { 
+                            number: generatedQNumber, 
                             status: 'waiting', 
                             timestamp: Date.now(), 
-                            faceImage: faceBase64 
+                            faceImage: base64Photo 
                         });
 
                         setTimeout(() => {
-                            flash.remove();
-                            showTicketScreen(qNum, faceBase64);
-                        }, 200);
+                            flashEl.remove();
+                            showTicketScreen(generatedQNumber, base64Photo);
+                        }, 250);
                     }
                 }, 1000);
             };
 
-            // ฟังก์ชันแสดงหน้าต่างบัตรคิว 10 วินาที
-            const showTicketScreen = (qNum, faceImgBase64) => {
+            // ระบบแสดงผลลัพธ์ข้อมูลคิวทับหน้าจอกล้องไว้เป็นเวลา 10 วินาที
+            const showTicketScreen = (qNumber, faceImgBase64) => {
                 cameraState = 'SHOWING_TICKET';
                 
                 document.getElementById('ui-countdown').classList.add('hidden');
@@ -511,28 +514,30 @@
                 const uiTicket = document.getElementById('ui-ticket');
                 uiTicket.classList.remove('hidden');
                 
-                document.getElementById('ticket-q-number').innerText = qNum;
+                document.getElementById('ticket-q-number').innerText = qNumber;
                 document.getElementById('ticket-face-img').src = faceImgBase64;
                 
-                speak(`คิวของคุณคือ ${qNum} กรุณาจำหมายเลขคิวของคุณไว้ค่ะ`);
+                speak(`หมายเลขคิวของคุณคือ ${qNumber} กรุณาจำหมายเลขคิวของคุณไว้ค่ะ`);
 
-                let timeLeft = 10;
-                document.getElementById('ticket-close-sec').innerText = timeLeft;
+                let displayTimeLeft = 10;
+                document.getElementById('ticket-close-sec').innerText = displayTimeLeft;
                 
                 ticketTimer = setInterval(() => {
-                    timeLeft--;
-                    document.getElementById('ticket-close-sec').innerText = timeLeft;
-                    if (timeLeft <= 0) {
+                    displayTimeLeft--;
+                    document.getElementById('ticket-close-sec').innerText = displayTimeLeft;
+                    if (displayTimeLeft <= 0) {
                         clearInterval(ticketTimer);
                         resetToWaiting(true);
                     }
                 }, 1000);
             };
 
-            // ฟังก์ชันรีเซ็ตระบบกล้องกลับไปหน้าพร้อมใช้งาน
-            const resetToWaiting = (fullReset = false) => {
-                cameraState = 'WAITING_FOR_POSE';
-                poseStartTime = 0;
+            // ฟังก์ชันรีเซ็ตค่าระบบกล้องให้พร้อมต้อนรับคนถัดไปทันที
+            const resetToWaiting = (fullClean = false) => {
+                if (!fullClean && (cameraState === 'COUNTDOWN' || cameraState === 'SHOWING_TICKET')) return;
+                
+                cameraState = 'WAITING_FOR_FACE';
+                faceDetectedStartTime = 0;
                 
                 if (countdownInterval) clearInterval(countdownInterval);
                 if (ticketTimer) clearInterval(ticketTimer);
@@ -543,85 +548,85 @@
                 
                 const faceGuide = document.getElementById('face-guide-overlay');
                 faceGuide.classList.remove('hidden');
-                faceGuide.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+                faceGuide.style.borderColor = 'rgba(255, 255, 255, 0.6)';
 
-                if (fullReset) {
+                if (fullClean) {
                     document.getElementById('ui-ticket').classList.add('hidden');
                 }
             };
 
-            // เริ่มทำงานกล้อง
+            // สตาร์ทระบบกล้องร่วม AI
             startWebcamWithAI();
             
-            // เปิดเสียงเบราว์เซอร์
             document.getElementById('sound-overlay').onclick = function() {
-                this.remove();
-                playBeep('normal');
+                this.remove(); playBeep('normal');
             };
 
-            // ติดตามการเปลี่ยนแปลงฐานข้อมูลเพื่อแสดงผลคิว
+            // เฝ้าติดตามการทำรายการบนฐานข้อมูลเพื่อผลักหน้าคิวใน Now Serving และ Next
             onValue(ref(db, 'queues'), (snapshot) => {
                 const data = snapshot.val() || {};
                 const queues = Object.entries(data).map(([id, val]) => ({id, ...val}));
                 
-                // 1. จัดการฝั่ง NOW SERVING (แสดงคิวที่โดนเรียก + รูปหน้า + เสียง)
+                // 1. นำข้อมูลมาประกาศเรียกออกเสียงลำโพงเมื่อเจ้าหน้าที่กดเรียก
                 const serving = queues.filter(q => q.status === 'serving').sort((a,b) => b.callTime - a.callTime);
                 if (serving.length > 0) {
-                    const latest = serving[0];
-                    const uniqueKey = latest.number + latest.callTime;
+                    const currentServingQ = serving[0];
+                    const uniqueKey = currentServingQ.number + currentServingQ.callTime;
                     if (lastAnnounce !== uniqueKey) {
                         lastAnnounce = uniqueKey;
-                        playBeep('alarm'); 
-                        setTimeout(() => { speak(`เชิญคิว, ${latest.number},, ที่ช่องบริการ, ${latest.counter} ค่ะ`); }, 500);
+                        playBeep('normal'); 
+                        setTimeout(() => { 
+                            speak(`ขอเชิญหมายเลขคิว, ${currentServingQ.number}, ที่ช่องบริการหมายเลข, ${currentServingQ.counter} ค่ะ`); 
+                        }, 500);
                     }
                 }
                 
+                // อัปเดตรายการ NOW SERVING บนหน้าจอฝั่งซ้ายพร้อมรูปหน้าผู้รับบริการขนาดใหญ่ชัดเจน
                 document.getElementById('tv-serving-list').innerHTML = serving.slice(0, 4).map((q, idx) => {
-                    const isNew = idx === 0; 
+                    const isNewestCall = idx === 0; 
                     return `
-                    <div class="${isNew ? 'bg-white text-slate-900 border-l-8 border-emerald-500 animate-pulse-green' : 'bg-slate-700 text-slate-400 border-l-8 border-slate-500'} 
+                    <div class="${isNewestCall ? 'bg-white text-slate-900 border-l-8 border-emerald-500 animate-pulse-green' : 'bg-slate-700 text-slate-400 border-l-8 border-slate-500'} 
                         p-6 rounded-2xl shadow-xl flex items-center justify-between transition-all flex-1">
                         
                         <div class="flex items-center gap-6">
-                            <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 ${isNew ? 'border-emerald-500' : 'border-slate-500'} overflow-hidden shadow-inner flex-shrink-0">
-                                ${q.faceImage ? `<img src="${q.faceImage}" class="w-full h-full object-cover transform scale-x-[-1]">` : `<div class="w-full h-full bg-slate-200 flex items-center justify-center"><i class="fa-solid fa-user text-4xl text-slate-400"></i></div>`}
+                            <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 ${isNewestCall ? 'border-emerald-500' : 'border-slate-500'} overflow-hidden shadow-inner flex-shrink-0 bg-slate-800">
+                                ${q.faceImage ? `<img src="${q.faceImage}" class="w-full h-full object-cover">` : `<div class="w-full h-full bg-slate-600 flex items-center justify-center"><i class="fa-solid fa-user text-3xl text-slate-400"></i></div>`}
                             </div>
                             
                             <div>
-                                <span class="text-lg sm:text-xl block opacity-70 mb-1 font-semibold">หมายเลขคิว / QUEUE</span>
-                                <span class="text-[3rem] sm:text-[4rem] xl:text-[5rem] leading-none font-black tracking-tighter">${q.number}</span>
+                                <span class="text-sm sm:text-base block opacity-75 mb-1 font-semibold tracking-wide">หมายเลขคิว / QUEUE</span>
+                                <span class="text-[3rem] sm:text-[4.5rem] leading-none font-black tracking-tighter">${q.number}</span>
                             </div>
                         </div>
 
                         <div class="text-right">
-                            <span class="text-lg sm:text-xl block opacity-70 mb-1 font-semibold">ช่องบริการ / COUNTER</span>
-                            <span class="text-[4rem] sm:text-[5rem] xl:text-[7rem] leading-none font-black ${isNew ? 'text-blue-600' : 'text-slate-200'}">${q.counter}</span>
+                            <span class="text-sm sm:text-base block opacity-75 mb-1 font-semibold tracking-wide">ช่องบริการ / COUNTER</span>
+                            <span class="text-[3.5rem] sm:text-[6.5rem] leading-none font-black ${isNewestCall ? 'text-blue-600' : 'text-slate-200'}">${q.counter}</span>
                         </div>
                     </div>`;
                 }).join('');
                 
-                // 2. จัดการฝั่งคิวรอ (NEXT) - แสดง 3 ลำดับ
+                // 2. จัดการข้อมูลคิวรอรับบริการถัดไป (NEXT) จำนวน 3 ลำดับ
                 const waiting = queues.filter(q => q.status === 'waiting').sort((a,b) => a.timestamp - b.timestamp).slice(0, 3);
                 if (waiting.length > 0) {
                     document.getElementById('tv-waiting-list').innerHTML = waiting.map(q => `
-                        <li class="flex items-center gap-4 text-slate-200 bg-slate-700/50 p-3 rounded-xl border border-slate-700 animate-fade-in shadow-sm">
-                            <div class="w-12 h-12 rounded-full border-2 border-slate-500 overflow-hidden">
-                                ${q.faceImage ? `<img src="${q.faceImage}" class="w-full h-full object-cover transform scale-x-[-1]">` : `<div class="w-full h-full bg-slate-600"></div>`}
+                        <li class="flex items-center gap-4 text-slate-200 bg-slate-700/50 p-2.5 rounded-xl border border-slate-700 animate-fade-in shadow-sm">
+                            <div class="w-12 h-12 rounded-full border-2 border-slate-500 overflow-hidden bg-slate-800">
+                                ${q.faceImage ? `<img src="${q.faceImage}" class="w-full h-full object-cover">` : `<div class="w-full h-full bg-slate-600"></div>`}
                             </div>
-                            <span class="font-mono font-black text-4xl tracking-wider text-emerald-400">${q.number}</span>
+                            <span class="font-mono font-black text-3xl tracking-wider text-emerald-400">${q.number}</span>
                         </li>
                     `).join('');
                 } else {
                     document.getElementById('tv-waiting-list').innerHTML = `
-                        <li class="text-slate-500 text-center py-6 border border-dashed border-slate-700 rounded-xl text-sm font-semibold">
-                            ไม่มีคิวรอในขณะนี้
-                        </li>
-                    `;
+                        <li class="text-slate-500 text-center py-5 border border-dashed border-slate-700 rounded-xl text-xs font-semibold">
+                            ไม่มีคิวรอรับบริการในขณะนี้
+                        </li>`;
                 }
             });
         };
 
-        // เลือกว่าจะรันหน้าอะไร
+        // สลับแสดงองค์ประกอบตามพารามิเตอร์ URL (?mode=staff หรือ ?mode=tv)
         const container = document.getElementById('app');
         if (mode === 'staff') {
             document.body.className = "bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col";
@@ -630,7 +635,6 @@
             document.body.className = "bg-slate-900 text-white antialiased min-h-screen overflow-hidden flex flex-col";
             renderTV(container);
         }
-
     </script>
 </body>
 </html>
