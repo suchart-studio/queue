@@ -39,9 +39,41 @@
             box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.5);
             transition: border-color 0.3s ease;
         }
+
+        /* ------------------------------------------- */
+        /* CSS สำหรับการพิมพ์ (Print Mode) กระดาษ A4 แนวตั้ง */
+        /* ------------------------------------------- */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 15mm;
+            }
+            body { 
+                background-color: white !important; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact;
+                overflow: visible !important;
+            }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            
+            /* จัดการตารางไม่ให้ขาดครึ่งหน้า */
+            table { page-break-inside: auto; width: 100%; border-collapse: collapse; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            thead { display: table-header-group; }
+            tfoot { display: table-footer-group; }
+            
+            /* ลบเงาและปรับสีขอบเพื่อพิมพ์ */
+            .shadow-sm, .shadow-md, .shadow-lg { box-shadow: none !important; }
+            table th { background-color: #f1f5f9 !important; color: #334155 !important; border: 1px solid #cbd5e1 !important; }
+            table td { border: 1px solid #cbd5e1 !important; padding: 8px !important; }
+            
+            /* จำกัดขนาดรูปให้พอดีกระดาษ */
+            img.print-img { width: 40px !important; height: 40px !important; border-radius: 50%; object-fit: cover; }
+        }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 overflow-hidden">
+<body class="bg-gray-100 text-gray-800 overflow-x-hidden">
 
     <div id="app"></div>
 
@@ -105,11 +137,9 @@
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'th-TH'; utterance.rate = 0.95;
-            
             const voices = window.speechSynthesis.getVoices();
             const thaiVoice = voices.find(v => v.lang.includes('th'));
             if (thaiVoice) utterance.voice = thaiVoice;
-
             window.speechSynthesis.speak(utterance);
         };
 
@@ -149,9 +179,14 @@
             container.innerHTML = `
                 <div class="min-h-screen bg-slate-100 p-4 md:p-8 select-none">
                     <div class="max-w-4xl mx-auto">
-                        <div class="bg-white p-4 rounded-xl shadow-sm mb-6 flex justify-between items-center">
+                        <div class="bg-white p-4 rounded-xl shadow-sm mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
                             <h1 class="text-xl font-bold text-slate-700"><i class="fa-solid fa-user-tie"></i> Staff Console</h1>
-                            <button id="btn-reset" class="text-xs text-red-500 hover:underline"><i class="fa-solid fa-trash"></i> ล้างข้อมูลคิวทั้งหมด</button>
+                            <div class="flex gap-4">
+                                <a href="?mode=report" target="_blank" class="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-200 transition font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-chart-pie"></i> ดูรายงาน (Report)
+                                </a>
+                                <button id="btn-reset" class="text-xs text-red-500 hover:underline"><i class="fa-solid fa-trash"></i> ล้างข้อมูลคิวทั้งหมด</button>
+                            </div>
                         </div>
                         <div class="bg-white p-4 rounded-xl shadow-sm mb-6">
                             <p class="text-sm text-slate-500 mb-3 font-semibold"><i class="fa-solid fa-desktop"></i> เลือกช่องบริการ:</p>
@@ -250,7 +285,235 @@
         };
 
         // ==========================================
-        // TV DISPLAY MODE
+        // REPORT MODE (หน้ารายงานพร้อมตัวกรองและ Print A4)
+        // ==========================================
+        const renderReport = (container) => {
+            const todayISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const currentMonth = todayISO.substring(0, 7); // YYYY-MM
+            const currentYear = todayISO.substring(0, 4); // YYYY
+
+            container.innerHTML = `
+                <div class="min-h-screen bg-slate-50 p-4 md:p-8">
+                    <div class="max-w-5xl mx-auto bg-white p-6 rounded-xl shadow-md print:shadow-none print:p-0">
+                        
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-4 border-b border-slate-200">
+                            <div>
+                                <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                                    <i class="fa-solid fa-file-lines text-blue-600"></i> รายงานบันทึกการให้บริการ
+                                </h1>
+                                <p class="text-slate-500 text-sm mt-1 print-only hidden" id="print-date-subtitle">ข้อมูล ณ วันที่: ${new Date().toLocaleDateString('th-TH')}</p>
+                            </div>
+                            <button onclick="window.print()" class="no-print mt-4 sm:mt-0 bg-slate-800 hover:bg-black text-white px-5 py-2 rounded-lg font-bold shadow transition flex items-center gap-2">
+                                <i class="fa-solid fa-print"></i> พิมพ์รายงาน (A4)
+                            </button>
+                        </div>
+
+                        <div class="no-print bg-slate-100 p-4 rounded-lg border border-slate-200 mb-6 flex flex-wrap gap-4 items-end">
+                            <div class="flex flex-col gap-1">
+                                <label class="text-xs font-bold text-slate-600">ประเภทรายงาน</label>
+                                <select id="filter-type" class="p-2 border border-slate-300 rounded focus:outline-none focus:border-blue-500 font-medium text-sm">
+                                    <option value="day">รายวัน</option>
+                                    <option value="month">รายเดือน</option>
+                                    <option value="year">รายปี</option>
+                                </select>
+                            </div>
+                            
+                            <div class="flex flex-col gap-1" id="filter-date-container">
+                                <label class="text-xs font-bold text-slate-600">เลือกวันที่</label>
+                                <input type="date" id="filter-date" value="${todayISO}" class="p-2 border border-slate-300 rounded focus:outline-none font-medium text-sm">
+                            </div>
+                            
+                            <div class="flex flex-col gap-1 hidden" id="filter-month-container">
+                                <label class="text-xs font-bold text-slate-600">เลือกเดือน</label>
+                                <input type="month" id="filter-month" value="${currentMonth}" class="p-2 border border-slate-300 rounded focus:outline-none font-medium text-sm">
+                            </div>
+                            
+                            <div class="flex flex-col gap-1 hidden" id="filter-year-container">
+                                <label class="text-xs font-bold text-slate-600">เลือกปี (ค.ศ.)</label>
+                                <input type="number" id="filter-year" value="${currentYear}" min="2020" max="2100" class="p-2 border border-slate-300 rounded focus:outline-none font-medium text-sm w-32">
+                            </div>
+
+                            <div class="flex flex-col gap-1">
+                                <label class="text-xs font-bold text-slate-600">ช่องบริการ (Counter)</label>
+                                <select id="filter-counter" class="p-2 border border-slate-300 rounded focus:outline-none font-medium text-sm">
+                                    <option value="all">ทุกช่องบริการ</option>
+                                    ${[1,2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}">ช่อง ${n}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                            <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl text-center">
+                                <p class="text-xs text-blue-500 font-bold uppercase mb-1">คิวทั้งหมด</p>
+                                <div class="text-3xl font-black text-blue-700" id="stat-total">0</div>
+                            </div>
+                            <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-xl text-center">
+                                <p class="text-xs text-emerald-500 font-bold uppercase mb-1">บริการเสร็จสิ้น</p>
+                                <div class="text-3xl font-black text-emerald-700" id="stat-done">0</div>
+                            </div>
+                            <div class="bg-amber-50 border border-amber-100 p-4 rounded-xl text-center">
+                                <p class="text-xs text-amber-500 font-bold uppercase mb-1">กำลังบริการ</p>
+                                <div class="text-3xl font-black text-amber-700" id="stat-serving">0</div>
+                            </div>
+                            <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+                                <p class="text-xs text-slate-500 font-bold uppercase mb-1">คิวตกค้าง/ยกเลิก</p>
+                                <div class="text-3xl font-black text-slate-700" id="stat-waiting">0</div>
+                            </div>
+                        </div>
+
+                        <div class="overflow-x-auto rounded-lg border border-slate-200">
+                            <table class="w-full text-left border-collapse text-sm">
+                                <thead>
+                                    <tr class="bg-slate-100 text-slate-600 border-b border-slate-200">
+                                        <th class="p-3 font-bold text-center w-16">ลำดับ</th>
+                                        <th class="p-3 font-bold text-center w-20">รูปภาพ</th>
+                                        <th class="p-3 font-bold">หมายเลขคิว</th>
+                                        <th class="p-3 font-bold text-center">ช่องบริการ</th>
+                                        <th class="p-3 font-bold">เวลาออกคิว</th>
+                                        <th class="p-3 font-bold">เวลาเรียก</th>
+                                        <th class="p-3 font-bold text-center">สถานะ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="report-table-body" class="divide-y divide-slate-100">
+                                    <tr><td colspan="7" class="p-8 text-center text-slate-400">กำลังโหลดข้อมูล...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // ดึง Element ตัวกรอง
+            const typeSel = document.getElementById('filter-type');
+            const dateCon = document.getElementById('filter-date-container');
+            const monthCon = document.getElementById('filter-month-container');
+            const yearCon = document.getElementById('filter-year-container');
+            
+            const dateInp = document.getElementById('filter-date');
+            const monthInp = document.getElementById('filter-month');
+            const yearInp = document.getElementById('filter-year');
+            const counterSel = document.getElementById('filter-counter');
+            
+            // สลับการแสดงผล Input ตามประเภท
+            typeSel.addEventListener('change', (e) => {
+                const val = e.target.value;
+                dateCon.classList.add('hidden');
+                monthCon.classList.add('hidden');
+                yearCon.classList.add('hidden');
+                
+                if (val === 'day') dateCon.classList.remove('hidden');
+                else if (val === 'month') monthCon.classList.remove('hidden');
+                else if (val === 'year') yearCon.classList.remove('hidden');
+                
+                renderTable(); // วาดตารางใหม่เมื่อเปลี่ยนประเภท
+            });
+
+            // รอรับ Event การเปลี่ยนค่าตัวกรองเพื่อเรนเดอร์ใหม่
+            [dateInp, monthInp, yearInp, counterSel].forEach(el => {
+                el.addEventListener('change', () => renderTable());
+            });
+
+            let allQueuesData = [];
+
+            // ฟังก์ชันวาดตาราง
+            const renderTable = () => {
+                const type = typeSel.value;
+                const filterCounter = counterSel.value;
+                
+                let targetDateStr = '';
+                let printDateText = '';
+                if (type === 'day') {
+                    targetDateStr = dateInp.value; // YYYY-MM-DD
+                    printDateText = `ประจำวันที่ ${new Date(targetDateStr).toLocaleDateString('th-TH')}`;
+                } else if (type === 'month') {
+                    targetDateStr = monthInp.value; // YYYY-MM
+                    const d = new Date(targetDateStr + '-01');
+                    printDateText = `ประจำเดือน ${d.toLocaleDateString('th-TH', {month: 'long', year: 'numeric'})}`;
+                } else if (type === 'year') {
+                    targetDateStr = yearInp.value; // YYYY
+                    printDateText = `ประจำปี ค.ศ. ${targetDateStr}`;
+                }
+
+                document.getElementById('print-date-subtitle').innerText = printDateText;
+
+                // กรองข้อมูล
+                let filtered = allQueuesData.filter(q => {
+                    const qDate = new Date(q.timestamp);
+                    // สร้าง String ให้ตรง Format กับ Input
+                    const y = qDate.getFullYear().toString();
+                    const m = (qDate.getMonth() + 1).toString().padStart(2, '0');
+                    const d = qDate.getDate().toString().padStart(2, '0');
+                    
+                    let matchDate = false;
+                    if (type === 'day') matchDate = (`${y}-${m}-${d}` === targetDateStr);
+                    else if (type === 'month') matchDate = (`${y}-${m}` === targetDateStr);
+                    else if (type === 'year') matchDate = (y === targetDateStr);
+
+                    let matchCounter = true;
+                    if (filterCounter !== 'all') {
+                        // ถ้าเป็นคิวที่ยังไม่ถูกเรียก (waiting) จะไม่มี counter ให้ถือว่าไม่ตรง
+                        if (!q.counter || q.counter.toString() !== filterCounter) matchCounter = false;
+                    }
+
+                    return matchDate && matchCounter;
+                });
+
+                // เรียงตามเวลาล่าสุดขึ้นก่อน
+                filtered.sort((a,b) => b.timestamp - a.timestamp);
+
+                // นับสถิติ
+                let sTotal = filtered.length;
+                let sDone = filtered.filter(q => q.status === 'done').length;
+                let sServing = filtered.filter(q => q.status === 'serving').length;
+                let sWait = filtered.filter(q => q.status === 'waiting').length;
+
+                document.getElementById('stat-total').innerText = sTotal;
+                document.getElementById('stat-done').innerText = sDone;
+                document.getElementById('stat-serving').innerText = sServing;
+                document.getElementById('stat-waiting').innerText = sWait;
+
+                // วาด HTML ลงตาราง
+                const tbody = document.getElementById('report-table-body');
+                if (filtered.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400 border border-slate-100">ไม่มีประวัติการให้บริการในเงื่อนไขที่เลือก</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = filtered.map((q, index) => {
+                    const timeCreate = new Date(q.timestamp).toLocaleTimeString('th-TH');
+                    const timeCall = q.callTime ? new Date(q.callTime).toLocaleTimeString('th-TH') : '-';
+                    
+                    let statusBadge = '';
+                    if (q.status === 'done') statusBadge = `<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded text-xs font-bold">เสร็จสิ้น</span>`;
+                    else if (q.status === 'serving') statusBadge = `<span class="bg-amber-100 text-amber-700 px-2 py-1 rounded text-xs font-bold">กำลังเรียก</span>`;
+                    else statusBadge = `<span class="bg-slate-100 text-slate-500 px-2 py-1 rounded text-xs font-bold">รอเรียก</span>`;
+
+                    return `
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 text-center text-slate-500">${filtered.length - index}</td>
+                            <td class="p-3 text-center">
+                                ${q.faceImage ? `<img src="${q.faceImage}" class="w-10 h-10 rounded-full mx-auto object-cover print-img shadow-sm border border-slate-200">` : `<div class="w-10 h-10 rounded-full bg-slate-200 mx-auto text-slate-400 flex items-center justify-center text-xs"><i class="fa-solid fa-user"></i></div>`}
+                            </td>
+                            <td class="p-3 font-mono font-bold text-slate-800 text-lg">${q.number}</td>
+                            <td class="p-3 text-center font-bold text-blue-600">${q.counter || '-'}</td>
+                            <td class="p-3 text-slate-500 text-xs">${timeCreate}</td>
+                            <td class="p-3 text-slate-500 text-xs">${timeCall}</td>
+                            <td class="p-3 text-center">${statusBadge}</td>
+                        </tr>
+                    `;
+                }).join('');
+            };
+
+            // ดึงข้อมูล Realtime
+            onValue(ref(db, 'queues'), (snapshot) => {
+                const data = snapshot.val() || {};
+                allQueuesData = Object.entries(data).map(([id, val]) => ({id, ...val}));
+                renderTable(); // เมื่อข้อมูลเปลี่ยน ให้วาดตารางใหม่
+            });
+        };
+
+        // ==========================================
+        // TV DISPLAY MODE (ระบบ AI คิวตรวจจับใบหน้าอัตโนมัติ)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
@@ -260,6 +523,7 @@
             let ticketTimer = null;
             let lastFaceBox = null; 
 
+            // (โครงสร้าง HTML ส่วน TV ไม่เปลี่ยนแปลง ขอละไว้เพื่อให้โค้ดสั้นลง และโฟกัสที่ Report)
             container.innerHTML = `
                 <div class="relative w-screen h-screen bg-slate-900 text-white overflow-hidden flex select-none">
                     <div id="sound-overlay" class="absolute inset-0 bg-black/95 z-50 flex items-center justify-center cursor-pointer">
@@ -311,7 +575,7 @@
                                 <h3 class="text-slate-400 font-bold mb-1 uppercase tracking-widest text-xs">หมายเลขคิวของคุณคือ</h3>
                                 <div id="ticket-q-number" class="text-[5.5rem] font-black text-emerald-400 leading-none mb-3 tracking-tighter drop-shadow-md">A000</div>
                                 
-                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800">
+                                <div class="w-44 h-44 rounded-full border-4 border-emerald-500 overflow-hidden shadow-2xl mb-4 bg-slate-800 flex-shrink-0">
                                     <img id="ticket-face-img" src="" class="w-full h-full object-cover">
                                 </div>
                                 <p class="text-amber-400 font-bold text-lg"><i class="fa-solid fa-volume-high animate-pulse"></i> กรุณาจำหมายเลขคิวของคุณไว้</p>
@@ -446,7 +710,6 @@
                                 height * canvasEl.height
                             );
 
-                            // เงื่อนไข: หน้าต้องใหญ่พอ และอยู่ค่อนข้างตรงกลางกรอบ
                             const isFaceLargeEnough = width > 0.15;
                             const isFaceCentered = (xCenter > 0.3 && xCenter < 0.7 && yCenter > 0.2 && yCenter < 0.8);
                             const isFaceReady = isFaceLargeEnough && isFaceCentered;
@@ -465,7 +728,6 @@
                                     const totalElapsed = Date.now() - faceDetectedStartTime;
                                     const remaining = Math.ceil((2000 - totalElapsed) / 1000);
                                     
-                                    // อัปเดตตัวเลข 2.. 1.. ให้เห็นว่ากำลังจับเวลา
                                     if (holdingSecEl) holdingSecEl.innerText = Math.max(1, remaining);
 
                                     if (totalElapsed >= 2000) {
@@ -499,8 +761,7 @@
                 document.getElementById('face-guide-overlay').style.borderColor = '#10b981'; 
                 document.getElementById('capture-number').innerText = currentSec;
                 
-                // ประกาศเสียงตามบรีฟ 
-                speak("เตรียมถ่ายภาพในอีก 5 วินาที กรุณามองกล้อง");
+                speak("เตรียมถ่ายภาพในอีก 5 วินาที กรุณามองกล้อง"); 
 
                 countdownInterval = setInterval(async () => {
                     currentSec--;
@@ -650,10 +911,16 @@
             });
         };
 
+        // ==========================================
+        // ROUTER / NAVIGATION
+        // ==========================================
         const container = document.getElementById('app');
         if (mode === 'staff') {
             document.body.className = "bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col";
             renderStaff(container);
+        } else if (mode === 'report') {
+            document.body.className = "bg-slate-200 text-slate-800 antialiased min-h-screen flex flex-col";
+            renderReport(container);
         } else {
             document.body.className = "bg-slate-900 text-white antialiased min-h-screen overflow-hidden flex flex-col";
             renderTV(container);
