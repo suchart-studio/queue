@@ -496,7 +496,7 @@
         };
 
         // ==========================================
-        // TV DISPLAY MODE (เอา Overlay บังจอเพื่อเปิดเสียงออกแล้ว)
+        // TV DISPLAY MODE 
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
@@ -508,6 +508,12 @@
 
             container.innerHTML = `
                 <div class="relative w-screen h-screen bg-slate-900 text-white overflow-hidden flex select-none">
+                    <div id="sound-overlay" class="absolute inset-0 bg-black/95 z-50 flex items-center justify-center cursor-pointer">
+                        <div class="text-center">
+                            <i class="fa-solid fa-volume-high text-6xl mb-4 text-emerald-400 animate-bounce"></i>
+                            <h2 class="text-2xl font-bold">คลิกที่นี่เพื่อเริ่มต้นเปิดใช้งานระบบแสดงผล</h2>
+                        </div>
+                    </div>
                     
                     <div class="w-2/3 p-8 flex flex-col border-r border-slate-800">
                         <h1 class="text-4xl font-bold text-slate-400 mb-6 tracking-wider">กำลังเรียก <span class="text-emerald-500">NOW SERVING</span></h1>
@@ -538,12 +544,12 @@
 
                             <div id="ui-holding" class="hidden absolute inset-0 bg-amber-500/20 flex flex-col items-center justify-center z-30 backdrop-blur-[2px] transition-all">
                                 <span class="text-2xl font-bold text-amber-400 bg-black/70 px-4 py-2 rounded-xl border border-amber-500/50 shadow-xl">
-                                    <i class="fa-solid fa-spinner animate-spin mr-2"></i> หน้านิ่งค้างไว้ <span id="holding-sec">2</span> วิ...
+                                    <i class="fa-solid fa-spinner animate-spin mr-2"></i> หน้านิ่งค้างไว้ <span id="holding-sec">3</span> วิ...
                                 </span>
                             </div>
 
                             <div id="ui-countdown" class="hidden absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-40 backdrop-blur-sm">
-                                <span class="text-[9rem] font-black text-emerald-400 leading-none drop-shadow-2xl" id="capture-number">5</span>
+                                <span class="text-[9rem] font-black text-emerald-400 leading-none drop-shadow-2xl" id="capture-number">3</span>
                                 <span class="text-white text-xl font-bold mt-2 animate-bounce bg-black/40 px-4 py-1 rounded-full"><i class="fa-solid fa-camera mr-1"></i> กรุณามองกล้อง</span>
                             </div>
 
@@ -702,11 +708,11 @@
                             } else if (cameraState === 'HOLDING_FACE') {
                                 if (isFaceReady) {
                                     const totalElapsed = Date.now() - faceDetectedStartTime;
-                                    const remaining = Math.ceil((2000 - totalElapsed) / 1000);
+                                    const remaining = Math.ceil((3000 - totalElapsed) / 1000);
                                     
                                     if (holdingSecEl) holdingSecEl.innerText = Math.max(1, remaining);
 
-                                    if (totalElapsed >= 2000) {
+                                    if (totalElapsed >= 3000) {
                                         startCaptureCountdown(videoEl);
                                     }
                                 } else {
@@ -730,14 +736,14 @@
 
             const startCaptureCountdown = (videoEl) => {
                 cameraState = 'COUNTDOWN';
-                let currentSec = 5;
+                let currentSec = 3;
                 
                 document.getElementById('ui-holding').classList.add('hidden');
                 document.getElementById('ui-countdown').classList.remove('hidden');
                 document.getElementById('face-guide-overlay').style.borderColor = '#10b981'; 
                 document.getElementById('capture-number').innerText = currentSec;
                 
-                speak("เตรียมถ่ายภาพในอีก 5 วินาที กรุณามองกล้อง"); 
+                speak("เตรียมถ่ายภาพในอีก 3 วินาที กรุณามองกล้อง"); 
 
                 countdownInterval = setInterval(async () => {
                     currentSec--;
@@ -823,7 +829,7 @@
 
             startWebcamWithAI();
             
-            // หมายเหตุ: ถึงเอาปุ่ม overlay บังจอออกไปแล้ว เสียงอาจจะยังไม่ออกจนกว่าจะมีการคลิกที่จอ หรือ ปลดล็อก Autoplay Policy ในการตั้งค่าเบราว์เซอร์
+            // หมายเหตุ: เสียงอาจจะยังไม่ออกจนกว่าจะมีการคลิกที่จอ หรือ ปลดล็อก Autoplay Policy
             window.addEventListener('click', () => {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 if(AudioContext) {
@@ -893,7 +899,7 @@
         };
 
         // ==========================================
-        // ROUTER
+        // ROUTER / NAVIGATION
         // ==========================================
         const container = document.getElementById('app');
         if (mode === 'staff') {
