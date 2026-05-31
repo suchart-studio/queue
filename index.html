@@ -285,17 +285,16 @@
         };
 
         // ==========================================
-        // REPORT MODE (หน้ารายงานพร้อมตัวกรองและ Print A4)
+        // REPORT MODE 
         // ==========================================
         const renderReport = (container) => {
-            const todayISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-            const currentMonth = todayISO.substring(0, 7); // YYYY-MM
-            const currentYear = todayISO.substring(0, 4); // YYYY
+            const todayISO = new Date().toISOString().split('T')[0];
+            const currentMonth = todayISO.substring(0, 7); 
+            const currentYear = todayISO.substring(0, 4); 
 
             container.innerHTML = `
                 <div class="min-h-screen bg-slate-50 p-4 md:p-8">
                     <div class="max-w-5xl mx-auto bg-white p-6 rounded-xl shadow-md print:shadow-none print:p-0">
-                        
                         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-4 border-b border-slate-200">
                             <div>
                                 <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -317,22 +316,18 @@
                                     <option value="year">รายปี</option>
                                 </select>
                             </div>
-                            
                             <div class="flex flex-col gap-1" id="filter-date-container">
                                 <label class="text-xs font-bold text-slate-600">เลือกวันที่</label>
                                 <input type="date" id="filter-date" value="${todayISO}" class="p-2 border border-slate-300 rounded focus:outline-none font-medium text-sm">
                             </div>
-                            
                             <div class="flex flex-col gap-1 hidden" id="filter-month-container">
                                 <label class="text-xs font-bold text-slate-600">เลือกเดือน</label>
                                 <input type="month" id="filter-month" value="${currentMonth}" class="p-2 border border-slate-300 rounded focus:outline-none font-medium text-sm">
                             </div>
-                            
                             <div class="flex flex-col gap-1 hidden" id="filter-year-container">
                                 <label class="text-xs font-bold text-slate-600">เลือกปี (ค.ศ.)</label>
                                 <input type="number" id="filter-year" value="${currentYear}" min="2020" max="2100" class="p-2 border border-slate-300 rounded focus:outline-none font-medium text-sm w-32">
                             </div>
-
                             <div class="flex flex-col gap-1">
                                 <label class="text-xs font-bold text-slate-600">ช่องบริการ (Counter)</label>
                                 <select id="filter-counter" class="p-2 border border-slate-300 rounded focus:outline-none font-medium text-sm">
@@ -383,18 +378,15 @@
                 </div>
             `;
 
-            // ดึง Element ตัวกรอง
             const typeSel = document.getElementById('filter-type');
             const dateCon = document.getElementById('filter-date-container');
             const monthCon = document.getElementById('filter-month-container');
             const yearCon = document.getElementById('filter-year-container');
-            
             const dateInp = document.getElementById('filter-date');
             const monthInp = document.getElementById('filter-month');
             const yearInp = document.getElementById('filter-year');
             const counterSel = document.getElementById('filter-counter');
             
-            // สลับการแสดงผล Input ตามประเภท
             typeSel.addEventListener('change', (e) => {
                 const val = e.target.value;
                 dateCon.classList.add('hidden');
@@ -405,17 +397,15 @@
                 else if (val === 'month') monthCon.classList.remove('hidden');
                 else if (val === 'year') yearCon.classList.remove('hidden');
                 
-                renderTable(); // วาดตารางใหม่เมื่อเปลี่ยนประเภท
+                renderTable(); 
             });
 
-            // รอรับ Event การเปลี่ยนค่าตัวกรองเพื่อเรนเดอร์ใหม่
             [dateInp, monthInp, yearInp, counterSel].forEach(el => {
                 el.addEventListener('change', () => renderTable());
             });
 
             let allQueuesData = [];
 
-            // ฟังก์ชันวาดตาราง
             const renderTable = () => {
                 const type = typeSel.value;
                 const filterCounter = counterSel.value;
@@ -423,23 +413,21 @@
                 let targetDateStr = '';
                 let printDateText = '';
                 if (type === 'day') {
-                    targetDateStr = dateInp.value; // YYYY-MM-DD
+                    targetDateStr = dateInp.value; 
                     printDateText = `ประจำวันที่ ${new Date(targetDateStr).toLocaleDateString('th-TH')}`;
                 } else if (type === 'month') {
-                    targetDateStr = monthInp.value; // YYYY-MM
+                    targetDateStr = monthInp.value; 
                     const d = new Date(targetDateStr + '-01');
                     printDateText = `ประจำเดือน ${d.toLocaleDateString('th-TH', {month: 'long', year: 'numeric'})}`;
                 } else if (type === 'year') {
-                    targetDateStr = yearInp.value; // YYYY
+                    targetDateStr = yearInp.value; 
                     printDateText = `ประจำปี ค.ศ. ${targetDateStr}`;
                 }
 
                 document.getElementById('print-date-subtitle').innerText = printDateText;
 
-                // กรองข้อมูล
                 let filtered = allQueuesData.filter(q => {
                     const qDate = new Date(q.timestamp);
-                    // สร้าง String ให้ตรง Format กับ Input
                     const y = qDate.getFullYear().toString();
                     const m = (qDate.getMonth() + 1).toString().padStart(2, '0');
                     const d = qDate.getDate().toString().padStart(2, '0');
@@ -451,17 +439,14 @@
 
                     let matchCounter = true;
                     if (filterCounter !== 'all') {
-                        // ถ้าเป็นคิวที่ยังไม่ถูกเรียก (waiting) จะไม่มี counter ให้ถือว่าไม่ตรง
                         if (!q.counter || q.counter.toString() !== filterCounter) matchCounter = false;
                     }
 
                     return matchDate && matchCounter;
                 });
 
-                // เรียงตามเวลาล่าสุดขึ้นก่อน
                 filtered.sort((a,b) => b.timestamp - a.timestamp);
 
-                // นับสถิติ
                 let sTotal = filtered.length;
                 let sDone = filtered.filter(q => q.status === 'done').length;
                 let sServing = filtered.filter(q => q.status === 'serving').length;
@@ -472,7 +457,6 @@
                 document.getElementById('stat-serving').innerText = sServing;
                 document.getElementById('stat-waiting').innerText = sWait;
 
-                // วาด HTML ลงตาราง
                 const tbody = document.getElementById('report-table-body');
                 if (filtered.length === 0) {
                     tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400 border border-slate-100">ไม่มีประวัติการให้บริการในเงื่อนไขที่เลือก</td></tr>`;
@@ -504,16 +488,15 @@
                 }).join('');
             };
 
-            // ดึงข้อมูล Realtime
             onValue(ref(db, 'queues'), (snapshot) => {
                 const data = snapshot.val() || {};
                 allQueuesData = Object.entries(data).map(([id, val]) => ({id, ...val}));
-                renderTable(); // เมื่อข้อมูลเปลี่ยน ให้วาดตารางใหม่
+                renderTable(); 
             });
         };
 
         // ==========================================
-        // TV DISPLAY MODE (ระบบ AI คิวตรวจจับใบหน้าอัตโนมัติ)
+        // TV DISPLAY MODE (เอา Overlay บังจอเพื่อเปิดเสียงออกแล้ว)
         // ==========================================
         const renderTV = (container) => {
             let lastAnnounce = "";
@@ -523,15 +506,8 @@
             let ticketTimer = null;
             let lastFaceBox = null; 
 
-            // (โครงสร้าง HTML ส่วน TV ไม่เปลี่ยนแปลง ขอละไว้เพื่อให้โค้ดสั้นลง และโฟกัสที่ Report)
             container.innerHTML = `
                 <div class="relative w-screen h-screen bg-slate-900 text-white overflow-hidden flex select-none">
-                    <div id="sound-overlay" class="absolute inset-0 bg-black/95 z-50 flex items-center justify-center cursor-pointer">
-                        <div class="text-center">
-                            <i class="fa-solid fa-volume-high text-6xl mb-4 text-emerald-400 animate-bounce"></i>
-                            <h2 class="text-2xl font-bold">คลิกที่นี่เพื่อเริ่มต้นเปิดใช้งานระบบแสดงผล</h2>
-                        </div>
-                    </div>
                     
                     <div class="w-2/3 p-8 flex flex-col border-r border-slate-800">
                         <h1 class="text-4xl font-bold text-slate-400 mb-6 tracking-wider">กำลังเรียก <span class="text-emerald-500">NOW SERVING</span></h1>
@@ -847,9 +823,14 @@
 
             startWebcamWithAI();
             
-            document.getElementById('sound-overlay').onclick = function() {
-                this.remove(); playBeep('normal');
-            };
+            // หมายเหตุ: ถึงเอาปุ่ม overlay บังจอออกไปแล้ว เสียงอาจจะยังไม่ออกจนกว่าจะมีการคลิกที่จอ หรือ ปลดล็อก Autoplay Policy ในการตั้งค่าเบราว์เซอร์
+            window.addEventListener('click', () => {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if(AudioContext) {
+                    const ctx = new AudioContext();
+                    ctx.resume();
+                }
+            }, {once: true});
 
             onValue(ref(db, 'queues'), (snapshot) => {
                 const data = snapshot.val() || {};
@@ -912,7 +893,7 @@
         };
 
         // ==========================================
-        // ROUTER / NAVIGATION
+        // ROUTER
         // ==========================================
         const container = document.getElementById('app');
         if (mode === 'staff') {
