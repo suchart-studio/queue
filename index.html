@@ -506,14 +506,9 @@
             let ticketTimer = null;
             let lastFaceBox = null; 
 
+            // โครงสร้างหน้าต่าง TV
             container.innerHTML = `
                 <div class="relative w-screen h-screen bg-slate-900 text-white overflow-hidden flex select-none">
-                    <div id="sound-overlay" class="absolute inset-0 bg-black/95 z-50 flex items-center justify-center cursor-pointer">
-                        <div class="text-center">
-                            <i class="fa-solid fa-volume-high text-6xl mb-4 text-emerald-400 animate-bounce"></i>
-                            <h2 class="text-2xl font-bold">คลิกที่นี่เพื่อเริ่มต้นเปิดใช้งานระบบแสดงผล</h2>
-                        </div>
-                    </div>
                     
                     <div class="w-2/3 p-8 flex flex-col border-r border-slate-800">
                         <h1 class="text-4xl font-bold text-slate-400 mb-6 tracking-wider">กำลังเรียก <span class="text-emerald-500">NOW SERVING</span></h1>
@@ -829,7 +824,6 @@
 
             startWebcamWithAI();
             
-            // หมายเหตุ: เสียงอาจจะยังไม่ออกจนกว่าจะมีการคลิกที่จอ หรือ ปลดล็อก Autoplay Policy
             window.addEventListener('click', () => {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 if(AudioContext) {
